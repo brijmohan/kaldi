@@ -19,6 +19,7 @@ min_post=0.025 # Minimum posterior to use (posteriors below this are pruned out)
 posterior_scale=1.0 # This scale helps to control for successve features being highly
                     # correlated.  E.g. try 0.1 or 0.3.
 apply_cmn=true # If true, apply sliding window cepstral mean normalization
+no_vad=false
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging
@@ -40,6 +41,7 @@ if [ $# != 3 ]; then
   echo "                                                   # diagonal model."
   echo "  --min-post <min-post|0.025>                      # Pruning threshold for posteriors"
   echo " --apply-cmn <true,false|true>                     # if true, apply sliding window cepstral mean"
+  echo " --no-vad <true,false|true>                     # if true, select only voiced frames based on vad.scp"
   echo "                                                   # normalization to features"
   exit 1;
 fi
@@ -61,7 +63,11 @@ delta_opts=`cat $srcdir/delta_opts 2>/dev/null`
 
 ## Set up features.
 if $apply_cmn; then
-  feats="ark,s,cs:add-deltas $delta_opts scp:$sdata/JOB/feats.scp ark:- | apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- | select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+  if $no_vad; then
+    feats="ark,s,cs:add-deltas $delta_opts scp:$sdata/JOB/feats.scp ark:- | apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- |"
+  else
+    feats="ark,s,cs:add-deltas $delta_opts scp:$sdata/JOB/feats.scp ark:- | apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 ark:- ark:- | select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
+  fi
 else
   feats="ark,s,cs:add-deltas $delta_opts scp:$sdata/JOB/feats.scp ark:- | select-voiced-frames ark:- scp,s,cs:$sdata/JOB/vad.scp ark:- |"
 fi

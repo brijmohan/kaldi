@@ -45,7 +45,7 @@ srcdir=$1
 data=$2
 dir=$3
 
-for f in $srcdir/final.raw $srcdir/min_chunk_size $srcdir/max_chunk_size $data/feats.scp $data/vad.scp ; do
+for f in $srcdir/final.raw $srcdir/min_chunk_size $srcdir/max_chunk_size $data/feats.scp ; do
   [ ! -f $f ] && echo "No such file $f" && exit 1;
 done
 
@@ -73,7 +73,8 @@ echo "$0: extracting xvectors for $data"
 sdata=$data/split$nj/JOB
 
 # Set up the features
-feat="ark:apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 scp:${sdata}/feats.scp ark:- | select-voiced-frames ark:- scp,s,cs:${sdata}/vad.scp ark:- |"
+#feat="ark:apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 scp:${sdata}/feats.scp ark:- | select-voiced-frames ark:- scp,s,cs:${sdata}/vad.scp ark:- |"
+feat="ark:apply-cmvn-sliding --norm-vars=false --center=true --cmn-window=300 scp:${sdata}/feats.scp ark:- |"
 
 if [ $stage -le 0 ]; then
   echo "$0: extracting xvectors from nnet"

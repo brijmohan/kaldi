@@ -1,0 +1,4 @@
+sid/train_diag_ubm.sh --cmd run.pl --mem 4G --mem 20G --nj 40 --num-threads 50 --subsample 1 --no-vad true data/erep_train_960_combined_no_sil_vad 2048 exp/diag_ubm_erep
+sid/train_diag_ubm.sh: initializing model from E-M in memory, 
+sid/train_diag_ubm.sh: starting from 1024 Gaussians, reaching 2048;
+sid/train_diag_ubm.sh: for 20 iterations, using at most 500000 frames of data
