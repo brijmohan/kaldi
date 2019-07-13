@@ -18,11 +18,11 @@ mfccdir=`pwd`/mfcc
 vaddir=`pwd`/mfcc
 
 # SRE16 trials
-sre16_trials=data/kadv2_test_clean_trial/trials
-sre16_trials_tgl=data/kadv2_test_clean_trial/trials_male
-sre16_trials_yue=data/kadv2_test_clean_trial/trials_female
+sre16_trials=data/sre16_eval_test/trials
+sre16_trials_tgl=data/sre16_eval_test/trials_tgl
+sre16_trials_yue=data/sre16_eval_test/trials_yue
 
-stage=3
+stage=0
 if [ $stage -le 0 ]; then
   # Path to some, but not all of the training corpora
   data_root=/export/corpora/LDC
@@ -76,21 +76,43 @@ fi
 
 if [ $stage -le 1 ]; then
   # Make MFCCs and compute the energy-based VAD for each dataset
-  for name in test_clean_enroll test_clean_trial train_960_combined_no_sil train_plda_combined; do
-    steps/make_mfcc.sh --mfcc-config conf/mfcc.conf --nj 16 --cmd "$train_cmd" \
+  for name in sre swbd sre16_eval_enroll sre16_eval_test sre16_major; do
+    steps/make_mfcc.sh --mfcc-config conf/mfcc.conf --nj 40 --cmd "$train_cmd" \
       data/${name} exp/make_mfcc $mfccdir
     utils/fix_data_dir.sh data/${name}
-    sid/compute_vad_decision.sh --nj 16 --cmd "$train_cmd" \
+    sid/compute_vad_decision.sh --nj 40 --cmd "$train_cmd" \
       data/${name} exp/make_vad $vaddir
     utils/fix_data_dir.sh data/${name}
   done
 fi
 
-<<c
+if [ $stage -le 2 ]; then
+  # Train the UBM.
+  sid/train_diag_ubm.sh --cmd "$train_cmd --mem 20G" \
+    --nj 40 --num-threads 8  --subsample 1 \
+    data/sre16_major 2048 \
+    exp/diag_ubm
+
+  sid/train_full_ubm.sh --cmd "$train_cmd --mem 25G" \
+    --nj 40 --remove-low-count-gaussians false --subsample 1 \
+    data/sre16_major \
+    exp/diag_ubm exp/full_ubm
+fi
+
+if [ $stage -le 3 ]; then
+  # Train the i-vector extractor.
+  utils/combine_data.sh data/swbd_sre data/swbd data/sre
+  sid/train_ivector_extractor.sh --cmd "$train_cmd --mem 35G" \
+    --ivector-dim 600 \
+    --num-iters 5 \
+    exp/full_ubm/final.ubm data/swbd_sre \
+    exp/extractor
+fi
+
 # In this section, we augment the SRE data with reverberation,
 # noise, music, and babble, and combined it with the clean SRE
 # data.  The combined list will be used to train the PLDA model.
-if [ $stage -le 2 ]; then
+if [ $stage -le 4 ]; then
   utils/data/get_utt2num_frames.sh --nj 40 --cmd "$train_cmd" data/sre
   frame_shift=0.01
   awk -v frame_shift=$frame_shift '{print $1, $2*frame_shift;}' data/sre/utt2num_frames > data/sre/reco2dur
@@ -155,134 +177,97 @@ if [ $stage -le 2 ]; then
   # double the size of the original clean list.
   utils/combine_data.sh data/sre_combined data/sre_aug_64k data/sre
 fi
-c
-
-train_data=kadv2_train_960_combined_no_sil
-train_plda=kadv2_train_plda_combined
-enroll_data=kadv2_test_clean_enroll
-trial_data=kadv2_test_clean_trial
-
-if [ $stage -le 3 ]; then
-  # Train the UBM.
-  : '
-  sid/train_diag_ubm.sh --cmd "$train_cmd --mem 20G" \
-    --nj 64 --num-threads 50  --subsample 1 --no-vad true \
-    data/${train_data} 2048 \
-    exp/diag_ubm_erep
-  '
-
-  sid/train_full_ubm.sh --cmd "$train_cmd --mem 25G" \
-    --nj 16 --remove-low-count-gaussians false --subsample 1 \
-    --no-vad true --stage -1 \
-    data/${train_data} \
-    exp/diag_ubm_erep exp/full_ubm_erep
-fi
-
-if [ $stage -le 4 ]; then
-  # Train the i-vector extractor.
-  #utils/combine_data.sh data/swbd_sre data/swbd data/sre
-  sid/train_ivector_extractor.sh --cmd "$train_cmd --mem 35G" \
-    --ivector-dim 600 \
-    --num-iters 5 \
-    --no-vad true \
-    exp/full_ubm_erep/final.ubm data/${train_data} \
-    exp/extractor_erep
-fi
 
 if [ $stage -le 5 ]; then
   # Extract i-vectors for SRE data (includes Mixer 6). We'll use this for
   # things like LDA or PLDA.
-  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 64 \
-    --no-vad true \
-    exp/extractor_erep data/${train_plda} \
-    exp/ivectors_${train_plda}
+  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 40 \
+    exp/extractor data/sre_combined \
+    exp/ivectors_sre_combined
 
   # The SRE16 major is an unlabeled dataset consisting of Cantonese and
   # and Tagalog.  This is useful for things like centering, whitening and
   # score normalization.
-  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 64 \
-    --no-vad true \
-    exp/extractor_erep data/${train_data} \
-    exp/ivectors_${train_data}
+  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 40 \
+    exp/extractor data/sre16_major \
+    exp/ivectors_sre16_major
 
   # The SRE16 test data
-  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
-    --no-vad true \
-    exp/extractor_erep data/${trial_data} \
-    exp/ivectors_${trial_data}
+  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 40 \
+    exp/extractor data/sre16_eval_test \
+    exp/ivectors_sre16_eval_test
 
   # The SRE16 enroll data
-  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
-    --no-vad true \
-    exp/extractor_erep data/${enroll_data} \
-    exp/ivectors_${enroll_data}
+  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 40 \
+    exp/extractor data/sre16_eval_enroll \
+    exp/ivectors_sre16_eval_enroll
 fi
 
 if [ $stage -le 6 ]; then
   # Compute the mean vector for centering the evaluation i-vectors.
-  $train_cmd exp/ivectors_${train_data}/log/compute_mean.log \
-    ivector-mean scp:exp/ivectors_${train_data}/ivector.scp \
-    exp/ivectors_${train_data}/mean.vec || exit 1;
+  $train_cmd exp/ivectors_sre16_major/log/compute_mean.log \
+    ivector-mean scp:exp/ivectors_sre16_major/ivector.scp \
+    exp/ivectors_sre16_major/mean.vec || exit 1;
 
   # This script uses LDA to decrease the dimensionality prior to PLDA.
   lda_dim=200
-  $train_cmd exp/ivectors_${train_plda}/log/lda.log \
+  $train_cmd exp/ivectors_sre_combined/log/lda.log \
     ivector-compute-lda --total-covariance-factor=0.0 --dim=$lda_dim \
-    "ark:ivector-subtract-global-mean scp:exp/ivectors_${train_plda}/ivector.scp ark:- |" \
-    ark:data/${train_plda}/utt2spk exp/ivectors_${train_plda}/transform.mat || exit 1;
+    "ark:ivector-subtract-global-mean scp:exp/ivectors_sre_combined/ivector.scp ark:- |" \
+    ark:data/sre_combined/utt2spk exp/ivectors_sre_combined/transform.mat || exit 1;
 
   #  Train the PLDA model.
-  $train_cmd exp/ivectors_${train_plda}/log/plda.log \
-    ivector-compute-plda ark:data/${train_plda}/spk2utt \
-    "ark:ivector-subtract-global-mean scp:exp/ivectors_${train_plda}/ivector.scp ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:-  ark:- |" \
-    exp/ivectors_${train_plda}/plda || exit 1;
+  $train_cmd exp/ivectors_sre_combined/log/plda.log \
+    ivector-compute-plda ark:data/sre_combined/spk2utt \
+    "ark:ivector-subtract-global-mean scp:exp/ivectors_sre_combined/ivector.scp ark:- | transform-vec exp/ivectors_sre_combined/transform.mat ark:- ark:- | ivector-normalize-length ark:-  ark:- |" \
+    exp/ivectors_sre_combined/plda || exit 1;
 
   # Here we adapt the out-of-domain PLDA model to SRE16 major, a pile
   # of unlabeled in-domain data.  In the future, we will include a clustering
   # based approach for domain adaptation.
-  $train_cmd exp/ivectors_${train_data}/log/plda_adapt.log \
+  $train_cmd exp/ivectors_sre16_major/log/plda_adapt.log \
     ivector-adapt-plda --within-covar-scale=0.75 --between-covar-scale=0.25 \
-    exp/ivectors_${train_plda}/plda \
-    "ark:ivector-subtract-global-mean scp:exp/ivectors_${train_data}/ivector.scp ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
-    exp/ivectors_${train_data}/plda_adapt || exit 1;
+    exp/ivectors_sre_combined/plda \
+    "ark:ivector-subtract-global-mean scp:exp/ivectors_sre16_major/ivector.scp ark:- | transform-vec exp/ivectors_sre_combined/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    exp/ivectors_sre16_major/plda_adapt || exit 1;
 fi
 
 if [ $stage -le 7 ]; then
   # Get results using the out-of-domain PLDA model
-  $train_cmd exp/scores_erep/log/sre16_eval_scoring.log \
+  $train_cmd exp/scores/log/sre16_eval_scoring.log \
     ivector-plda-scoring --normalize-length=true \
-    --num-utts=ark:exp/ivectors_${enroll_data}/num_utts.ark \
-    "ivector-copy-plda --smoothing=0.0 exp/ivectors_${train_plda}/plda - |" \
-    "ark:ivector-mean ark:data/${enroll_data}/spk2utt scp:exp/ivectors_${enroll_data}/ivector.scp ark:- | ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec ark:- ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
-    "ark:ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec scp:exp/ivectors_${trial_data}/ivector.scp ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
-    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores_erep/sre16_eval_scores || exit 1;
+    --num-utts=ark:exp/ivectors_sre16_eval_enroll/num_utts.ark \
+    "ivector-copy-plda --smoothing=0.0 exp/ivectors_sre_combined/plda - |" \
+    "ark:ivector-mean ark:data/sre16_eval_enroll/spk2utt scp:exp/ivectors_sre16_eval_enroll/ivector.scp ark:- | ivector-subtract-global-mean exp/ivectors_sre16_major/mean.vec ark:- ark:- | transform-vec exp/ivectors_sre_combined/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "ark:ivector-subtract-global-mean exp/ivectors_sre16_major/mean.vec scp:exp/ivectors_sre16_eval_test/ivector.scp ark:- | transform-vec exp/ivectors_sre_combined/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores/sre16_eval_scores || exit 1;
 
-  utils/filter_scp.pl $sre16_trials_tgl exp/scores_erep/sre16_eval_scores > exp/scores_erep/sre16_eval_tgl_scores
-  utils/filter_scp.pl $sre16_trials_yue exp/scores_erep/sre16_eval_scores > exp/scores_erep/sre16_eval_yue_scores
-  pooled_eer=$(paste $sre16_trials exp/scores_erep/sre16_eval_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  tgl_eer=$(paste $sre16_trials_tgl exp/scores_erep/sre16_eval_tgl_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  yue_eer=$(paste $sre16_trials_yue exp/scores_erep/sre16_eval_yue_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  echo "Using Out-of-Domain PLDA, EER: Pooled ${pooled_eer}%, Male ${tgl_eer}%, Female ${yue_eer}%"
+  utils/filter_scp.pl $sre16_trials_tgl exp/scores/sre16_eval_scores > exp/scores/sre16_eval_tgl_scores
+  utils/filter_scp.pl $sre16_trials_yue exp/scores/sre16_eval_scores > exp/scores/sre16_eval_yue_scores
+  pooled_eer=$(paste $sre16_trials exp/scores/sre16_eval_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  tgl_eer=$(paste $sre16_trials_tgl exp/scores/sre16_eval_tgl_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  yue_eer=$(paste $sre16_trials_yue exp/scores/sre16_eval_yue_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  echo "Using Out-of-Domain PLDA, EER: Pooled ${pooled_eer}%, Tagalog ${tgl_eer}%, Cantonese ${yue_eer}%"
   # EER: Pooled 13.65%, Tagalog 17.73%, Cantonese 9.612%
 fi
 
 if [ $stage -le 8 ]; then
   # Get results using an adapted PLDA model. In the future we'll replace
   # this (or add to this) with a clustering based approach to PLDA adaptation.
-  $train_cmd exp/scores_erep/log/sre16_eval_scoring_adapt.log \
+  $train_cmd exp/scores/log/sre16_eval_scoring_adapt.log \
     ivector-plda-scoring --normalize-length=true \
-    --num-utts=ark:exp/ivectors_${enroll_data}/num_utts.ark \
-    "ivector-copy-plda --smoothing=0.0 exp/ivectors_${train_data}/plda_adapt - |" \
-    "ark:ivector-mean ark:data/${enroll_data}/spk2utt scp:exp/ivectors_${enroll_data}/ivector.scp ark:- | ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec ark:- ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
-    "ark:ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec scp:exp/ivectors_${trial_data}/ivector.scp ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
-    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores_erep/sre16_eval_scores_adapt || exit 1;
+    --num-utts=ark:exp/ivectors_sre16_eval_enroll/num_utts.ark \
+    "ivector-copy-plda --smoothing=0.0 exp/ivectors_sre16_major/plda_adapt - |" \
+    "ark:ivector-mean ark:data/sre16_eval_enroll/spk2utt scp:exp/ivectors_sre16_eval_enroll/ivector.scp ark:- | ivector-subtract-global-mean exp/ivectors_sre16_major/mean.vec ark:- ark:- | transform-vec exp/ivectors_sre_combined/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "ark:ivector-subtract-global-mean exp/ivectors_sre16_major/mean.vec scp:exp/ivectors_sre16_eval_test/ivector.scp ark:- | transform-vec exp/ivectors_sre_combined/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores/sre16_eval_scores_adapt || exit 1;
 
-  utils/filter_scp.pl $sre16_trials_tgl exp/scores_erep/sre16_eval_scores_adapt > exp/scores_erep/sre16_eval_tgl_scores_adapt
-  utils/filter_scp.pl $sre16_trials_yue exp/scores_erep/sre16_eval_scores_adapt > exp/scores_erep/sre16_eval_yue_scores_adapt
-  pooled_eer=$(paste $sre16_trials exp/scores_erep/sre16_eval_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  tgl_eer=$(paste $sre16_trials_tgl exp/scores_erep/sre16_eval_tgl_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  yue_eer=$(paste $sre16_trials_yue exp/scores_erep/sre16_eval_yue_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  echo "Using Adapted PLDA, EER: Pooled ${pooled_eer}%, Male ${tgl_eer}%, Female ${yue_eer}%"
+  utils/filter_scp.pl $sre16_trials_tgl exp/scores/sre16_eval_scores_adapt > exp/scores/sre16_eval_tgl_scores_adapt
+  utils/filter_scp.pl $sre16_trials_yue exp/scores/sre16_eval_scores_adapt > exp/scores/sre16_eval_yue_scores_adapt
+  pooled_eer=$(paste $sre16_trials exp/scores/sre16_eval_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  tgl_eer=$(paste $sre16_trials_tgl exp/scores/sre16_eval_tgl_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  yue_eer=$(paste $sre16_trials_yue exp/scores/sre16_eval_yue_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  echo "Using Adapted PLDA, EER: Pooled ${pooled_eer}%, Tagalog ${tgl_eer}%, Cantonese ${yue_eer}%"
   # EER: Pooled 12.98%, Tagalog 17.8%, Cantonese 8.35%
   #
   # Using the official SRE16 scoring software, we obtain the following equalized results:

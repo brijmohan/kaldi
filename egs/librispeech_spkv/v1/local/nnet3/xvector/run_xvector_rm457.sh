@@ -57,10 +57,12 @@ if [ $stage -le 4 ]; then
     utils/create_split_dir.pl \
      /export/b{03,04,05,06}/$USER/kaldi-data/egs/sre16/v2/xvector-$(date +'%m_%d_%H_%M')/$egs_dir/storage $egs_dir/storage
   fi
+  # start with stage=0
+  # original frames-per-iter 1000000000
   sid/nnet3/xvector/get_egs.sh --cmd "$train_cmd" \
-    --nj 1 \
+    --nj 8 \
     --stage 0 \
-    --frames-per-iter 1000000000 \
+    --frames-per-iter 100000000 \
     --frames-per-iter-diagnostic 100000 \
     --min-frames-per-chunk 200 \
     --max-frames-per-chunk 400 \
@@ -94,8 +96,6 @@ if [ $stage -le 5 ]; then
   relu-batchnorm-layer name=tdnn1 input=Append(-2,-1,0,1,2) dim=512
   relu-batchnorm-layer name=tdnn2 input=Append(-2,0,2) dim=512
   relu-batchnorm-layer name=tdnn3 input=Append(-3,0,3) dim=512
-  relu-batchnorm-layer name=tdnn4 dim=512
-  relu-batchnorm-layer name=tdnn5 dim=1500
 
   # The stats pooling layer. Layers after this are segment-level.
   # In the config below, the first and last argument (0, and ${max_chunk_size})
@@ -109,7 +109,6 @@ if [ $stage -le 5 ]; then
 
   # This is where another layer the embedding could be extracted
   # from, but usually the previous one works better.
-  relu-batchnorm-layer name=tdnn7 dim=512
   output-layer name=output include-log-softmax=true dim=${num_targets}
 EOF
 

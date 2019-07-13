@@ -216,6 +216,8 @@ if [ $stage -le 3 ]; then
   fi
 fi
 
+#exit 1
+
 if [ $stage -le 4 ]; then
   echo "$0: Shuffling order of archives on disk"
   $cmd --max-jobs-run $nj JOB=1:$num_train_archives $dir/log/shuffle.JOB.log \
