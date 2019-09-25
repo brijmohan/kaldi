@@ -30,16 +30,21 @@ sre16_trials=data/test_clean_trial/trials
 sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
 #nnet_dir=exp/xvector_nnet_1a_460baseline_rm457 # CLEAN MODEL
-nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_pwvc_s3 # VM1 MODEL
+#nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_sg400k_s3 # VM1 MODEL
+nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_vm1 # VM1 MODEL
 #nnet_egs_dir=exp/xvector_nnet_1a_kadv5/egs
 nnet_egs_dir=$nnet_dir/egs
 
-train_data=train_460_pwvc_s3
-train_plda=train_plda_460_pwvc_s3
-enroll_data=test_clean_enroll_pwvc_s3
-trial_data=test_clean_trial_pwvc_s3
+#train_data=train_460_sg400k_s3
+#train_plda=train_plda_460_sg400k_s3
+#enroll_data=test_clean_enroll_sg400k_s3
+#trial_data=test_clean_trial_sg400k_s3
+train_data=train_460_vm1
+train_plda=train_plda_460_vm1
+enroll_data=test_clean_enroll_vm1
+trial_data=test_clean_trial_sg_s3
 
-stage=6
+stage=8
 if [ $stage -le 0 ]; then
 
   # format the data as Kaldi data directories
@@ -208,7 +213,7 @@ if [ $stage -le 8 ]; then
   # The SRE16 major is an unlabeled dataset consisting of Cantonese and
   # and Tagalog.  This is useful for things like centering, whitening and
   # score normalization.
-
+  : '
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
     $nnet_dir data/${xvector_train_data} \
     exp/xvectors_${xvector_train_data}
@@ -218,16 +223,19 @@ if [ $stage -le 8 ]; then
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 12G" --nj $nj \
     $nnet_dir data/${train_plda} \
     exp/xvectors_${train_plda}
+  '
 
   # The SRE16 test data
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
     $nnet_dir data/${trial_data} \
     exp/xvectors_${trial_data}
 
+  : '
   # The SRE16 enroll data
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
     $nnet_dir data/${enroll_data} \
     exp/xvectors_${enroll_data}
+  '
 fi
 
 if [ $stage -le 9 ]; then
