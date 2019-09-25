@@ -94,7 +94,6 @@ if [ $stage -le 5 ]; then
   relu-batchnorm-layer name=tdnn1 input=Append(-2,-1,0,1,2) dim=512
   relu-batchnorm-layer name=tdnn2 input=Append(-2,0,2) dim=512
   relu-batchnorm-layer name=tdnn3 input=Append(-3,0,3) dim=512
-  relu-batchnorm-layer name=tdnn4 dim=512
   relu-batchnorm-layer name=tdnn5 dim=1500
 
   # The stats pooling layer. Layers after this are segment-level.
@@ -109,7 +108,6 @@ if [ $stage -le 5 ]; then
 
   # This is where another layer the embedding could be extracted
   # from, but usually the previous one works better.
-  relu-batchnorm-layer name=tdnn7 dim=512
   output-layer name=output include-log-softmax=true dim=${num_targets}
 EOF
 

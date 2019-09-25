@@ -24,7 +24,7 @@
 #    may want more jobs, though.
 
 # Begin configuration section.
-nj=5   # this is the number of separate queue jobs we run, but each one
+nj=4   # this is the number of separate queue jobs we run, but each one
         # contains num_processes sub-jobs.. the real number of threads we
         # run is nj * num_processes * num_threads, and the number of
         # separate pieces of data is nj * num_processes.

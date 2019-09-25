@@ -11,89 +11,92 @@
 # In the future, we will add score-normalization and a more effective form of
 # PLDA domain adaptation.
 
+# This script runs ivectors over 460 hour subset of Librispeech
+
 . ./cmd.sh
 . ./path.sh
 set -e
 mfccdir=`pwd`/mfcc
 vaddir=`pwd`/mfcc
 
+data=/home/bsrivastava/asr_data
+
 # SRE16 trials
-sre16_trials=data/kadv2_test_clean_trial/trials
-sre16_trials_tgl=data/kadv2_test_clean_trial/trials_male
-sre16_trials_yue=data/kadv2_test_clean_trial/trials_female
+sre16_trials=data/test_clean_trial/trials
+sre16_trials_tgl=data/test_clean_trial/trials_male
+sre16_trials_yue=data/test_clean_trial/trials_female
 
-stage=3
+tag=""
+train_data=train_460
+train_plda=train_plda_460
+enroll_data=test_clean_enroll
+trial_data=test_clean_trial
+
+stage=6
 if [ $stage -le 0 ]; then
-  # Path to some, but not all of the training corpora
-  data_root=/export/corpora/LDC
 
-  # Prepare telephone and microphone speech from Mixer6.
-  local/make_mx6.sh $data_root/LDC2013S03 data/
+  # format the data as Kaldi data directories
+  #for part in dev-clean test-clean dev-other test-other train-clean-100 train-clean-360 train-other-500; do
+  for part in train-clean-100 train-clean-360; do
+    # use underscore-separated names in data directories.
+    local/data_prep_adv.sh $data/LibriSpeech/$part data/$(echo $part | sed s/-/_/g)
+  done
 
-  # Prepare SRE10 test and enroll. Includes microphone interview speech.
-  # NOTE: This corpus is now available through the LDC as LDC2017S06.
-  local/make_sre10.pl /export/corpora5/SRE/SRE2010/eval/ data/
+  # Combine all training data into one
+  utils/combine_data.sh data/train_460 \
+	  data/train_clean_100 data/train_clean_360
 
-  # Prepare SRE08 test and enroll. Includes some microphone speech.
-  local/make_sre08.pl $data_root/LDC2011S08 $data_root/LDC2011S05 data/
-
-  # This prepares the older NIST SREs from 2004-2006.
-  local/make_sre.sh $data_root data/
-
-  # Combine all SREs prior to 2016 and Mixer6 into one dataset
-  utils/combine_data.sh data/sre \
-    data/sre2004 data/sre2005_train \
-    data/sre2005_test data/sre2006_train \
-    data/sre2006_test_1 data/sre2006_test_2 \
-    data/sre08 data/mx6 data/sre10
-  utils/validate_data_dir.sh --no-text --no-feats data/sre
-  utils/fix_data_dir.sh data/sre
-
-  # Prepare SWBD corpora.
-  local/make_swbd_cellular1.pl $data_root/LDC2001S13 \
-    data/swbd_cellular1_train
-  local/make_swbd_cellular2.pl /export/corpora5/LDC/LDC2004S07 \
-    data/swbd_cellular2_train
-  local/make_swbd2_phase1.pl $data_root/LDC98S75 \
-    data/swbd2_phase1_train
-  local/make_swbd2_phase2.pl /export/corpora5/LDC/LDC99S79 \
-    data/swbd2_phase2_train
-  local/make_swbd2_phase3.pl /export/corpora5/LDC/LDC2002S06 \
-    data/swbd2_phase3_train
-
-  # Combine all SWB corpora into one dataset.
-  utils/combine_data.sh data/swbd \
-    data/swbd_cellular1_train data/swbd_cellular2_train \
-    data/swbd2_phase1_train data/swbd2_phase2_train data/swbd2_phase3_train
-
-  # Prepare NIST SRE 2016 evaluation data.
-  local/make_sre16_eval.pl /export/corpora5/SRE/R149_0_1 data
-
-  # Prepare unlabeled Cantonese and Tagalog development data. This dataset
-  # was distributed to SRE participants.
-  local/make_sre16_unlabeled.pl /export/corpora5/SRE/LDC2016E46_SRE16_Call_My_Net_Training_Data data
+  # Make enrollment and trial data
+  #python local/make_librispeech_eval.py ./proto $data/LibriSpeech/test-clean
+  #utils/utt2spk_to_spk2utt.pl data/test_clean_enroll/utt2spk > data/test_clean_enroll/spk2utt
+  #utils/utt2spk_to_spk2utt.pl data/test_clean_trial/utt2spk > data/test_clean_trial/spk2utt
 fi
+#exit 0
 
+nj=64
 if [ $stage -le 1 ]; then
   # Make MFCCs and compute the energy-based VAD for each dataset
-  for name in test_clean_enroll test_clean_trial train_960_combined_no_sil train_plda_combined; do
-    steps/make_mfcc.sh --mfcc-config conf/mfcc.conf --nj 16 --cmd "$train_cmd" \
+  #for name in dev_clean test_clean dev_other test_other train_960 test_clean_enroll test_clean_trial; do
+  for name in ${train_data} ${enroll_data} ${trial_data} ; do
+    steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
       data/${name} exp/make_mfcc $mfccdir
     utils/fix_data_dir.sh data/${name}
-    sid/compute_vad_decision.sh --nj 16 --cmd "$train_cmd" \
+    sid/compute_vad_decision.sh --nj $nj --cmd "$train_cmd" \
       data/${name} exp/make_vad $vaddir
     utils/fix_data_dir.sh data/${name}
   done
 fi
 
-<<c
+if [ $stage -le 2 ]; then
+  # Train the UBM.
+  sid/train_diag_ubm.sh --cmd "$train_cmd --mem 20G" \
+    --nj 64 --num-threads 8  --subsample 1 \
+    data/${train_data} 2048 \
+    exp/diag_ubm
+
+  sid/train_full_ubm.sh --cmd "$train_cmd --mem 25G" \
+    --nj 64 --remove-low-count-gaussians false --subsample 1 \
+    data/${train_data} \
+    exp/diag_ubm exp/full_ubm
+fi
+
+if [ $stage -le 3 ]; then
+  # Train the i-vector extractor.
+  #utils/combine_data.sh data/swbd_sre data/swbd data/sre
+  sid/train_ivector_extractor.sh --cmd "$train_cmd --mem 35G" \
+    --ivector-dim 600 \
+    --num-iters 5 \
+    --stage 4 \
+    exp/full_ubm/final.ubm data/${train_data} \
+    exp/extractor
+fi
+
 # In this section, we augment the SRE data with reverberation,
 # noise, music, and babble, and combined it with the clean SRE
 # data.  The combined list will be used to train the PLDA model.
-if [ $stage -le 2 ]; then
-  utils/data/get_utt2num_frames.sh --nj 40 --cmd "$train_cmd" data/sre
+if [ $stage -le 4 ]; then
   frame_shift=0.01
-  awk -v frame_shift=$frame_shift '{print $1, $2*frame_shift;}' data/sre/utt2num_frames > data/sre/reco2dur
+  awk -v frame_shift=$frame_shift '{print $1, $2*frame_shift;}' data/${train_data}/utt2num_frames > data/${train_data}/reco2dur
 
   if [ ! -d "RIRS_NOISES" ]; then
     # Download the package that includes the real RIRs, simulated RIRs, isotropic noises and point-source noises
@@ -106,7 +109,7 @@ if [ $stage -le 2 ]; then
   rvb_opts+=(--rir-set-parameters "0.5, RIRS_NOISES/simulated_rirs/smallroom/rir_list")
   rvb_opts+=(--rir-set-parameters "0.5, RIRS_NOISES/simulated_rirs/mediumroom/rir_list")
 
-  # Make a reverberated version of the SRE list.  Note that we don't add any
+  # Make a reverberated version of the SWBD+SRE list.  Note that we dont add any
   # additive noise here.
   steps/data/reverberate_data_dir.py \
     "${rvb_opts[@]}" \
@@ -115,15 +118,15 @@ if [ $stage -le 2 ]; then
     --isotropic-noise-addition-probability 0 \
     --num-replications 1 \
     --source-sampling-rate 8000 \
-    data/sre data/sre_reverb
-  cp data/sre/vad.scp data/sre_reverb/
-  utils/copy_data_dir.sh --utt-suffix "-reverb" data/sre_reverb data/sre_reverb.new
-  rm -rf data/sre_reverb
-  mv data/sre_reverb.new data/sre_reverb
+    data/${train_data} data/${train_data}_reverb
+  cp data/${train_data}/vad.scp data/${train_data}_reverb/
+  utils/copy_data_dir.sh --utt-suffix "-reverb" data/${train_data}_reverb data/${train_data}_reverb.new
+  rm -rf data/${train_data}_reverb
+  mv data/${train_data}_reverb.new data/${train_data}_reverb
 
   # Prepare the MUSAN corpus, which consists of music, speech, and noise
   # suitable for augmentation.
-  local/make_musan.sh /export/corpora/JHU/musan data
+  local/make_musan.sh ${data}/musan data
 
   # Get the duration of the MUSAN recordings.  This will be used by the
   # script augment_data_dir.py.
@@ -133,88 +136,61 @@ if [ $stage -le 2 ]; then
   done
 
   # Augment with musan_noise
-  steps/data/augment_data_dir.py --utt-suffix "noise" --fg-interval 1 --fg-snrs "15:10:5:0" --fg-noise-dir "data/musan_noise" data/sre data/sre_noise
+  steps/data/augment_data_dir.py --utt-suffix "noise" --fg-interval 1 --fg-snrs "15:10:5:0" --fg-noise-dir "data/musan_noise" data/${train_data} data/${train_data}_noise
   # Augment with musan_music
-  steps/data/augment_data_dir.py --utt-suffix "music" --bg-snrs "15:10:8:5" --num-bg-noises "1" --bg-noise-dir "data/musan_music" data/sre data/sre_music
+  steps/data/augment_data_dir.py --utt-suffix "music" --bg-snrs "15:10:8:5" --num-bg-noises "1" --bg-noise-dir "data/musan_music" data/${train_data} data/${train_data}_music
   # Augment with musan_speech
-  steps/data/augment_data_dir.py --utt-suffix "babble" --bg-snrs "20:17:15:13" --num-bg-noises "3:4:5:6:7" --bg-noise-dir "data/musan_speech" data/sre data/sre_babble
+  steps/data/augment_data_dir.py --utt-suffix "babble" --bg-snrs "20:17:15:13" --num-bg-noises "3:4:5:6:7" --bg-noise-dir "data/musan_speech" data/${train_data} data/${train_data}_babble
 
   # Combine reverb, noise, music, and babble into one directory.
-  utils/combine_data.sh data/sre_aug data/sre_reverb data/sre_noise data/sre_music data/sre_babble
+  utils/combine_data.sh data/${train_data}_aug data/${train_data}_reverb data/${train_data}_noise data/${train_data}_music data/${train_data}_babble
 
-  # Take a random subset of the augmentations (64k is roughly the size of the SRE dataset)
-  utils/subset_data_dir.sh data/sre_aug 64000 data/sre_aug_64k
-  utils/fix_data_dir.sh data/sre_aug_64k
+  # Take a random subset of the augmentations (128k is somewhat larger than twice
+  # the size of the SWBD+SRE list)
+  #utils/subset_data_dir.sh data/${train_data}_aug 565000 data/${train_data}_aug_565k
+  # Taking a subset of 260k because original 460h corpus is around 130k
+  utils/subset_data_dir.sh data/${train_data}_aug 260000 data/${train_data}_aug_260k
+  utils/fix_data_dir.sh data/${train_data}_aug_260k
 
-  # Make MFCCs for the augmented data.  Note that we want we should alreay have the vad.scp
-  # from the clean version at this point, which is identical to the clean version!
-  steps/make_mfcc.sh --mfcc-config conf/mfcc.conf --nj 40 --cmd "$train_cmd" \
-    data/sre_aug_64k exp/make_mfcc $mfccdir
+  # Make MFCCs for the augmented data.  Note that we do not compute a new
+  # vad.scp file here.  Instead, we use the vad.scp from the clean version of
+  # the list.
+  steps/make_mfcc.sh --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
+    data/${train_data}_aug_260k exp/make_mfcc $mfccdir
 
-  # Combine the clean and augmented SRE list.  This is now roughly
+  # Combine the clean and augmented SWBD+SRE list.  This is now roughly
   # double the size of the original clean list.
-  utils/combine_data.sh data/sre_combined data/sre_aug_64k data/sre
-fi
-c
+  utils/combine_data.sh data/${train_data}_combined data/${train_data}_aug_260k data/${train_data}
 
-train_data=kadv2_train_960_combined_no_sil
-train_plda=kadv2_train_plda_combined
-enroll_data=kadv2_test_clean_enroll
-trial_data=kadv2_test_clean_trial
-
-if [ $stage -le 3 ]; then
-  # Train the UBM.
-  : '
-  sid/train_diag_ubm.sh --cmd "$train_cmd --mem 20G" \
-    --nj 64 --num-threads 50  --subsample 1 --no-vad true \
-    data/${train_data} 2048 \
-    exp/diag_ubm_erep
-  '
-
-  sid/train_full_ubm.sh --cmd "$train_cmd --mem 25G" \
-    --nj 16 --remove-low-count-gaussians false --subsample 1 \
-    --no-vad true --stage -1 \
-    data/${train_data} \
-    exp/diag_ubm_erep exp/full_ubm_erep
-fi
-
-if [ $stage -le 4 ]; then
-  # Train the i-vector extractor.
-  #utils/combine_data.sh data/swbd_sre data/swbd data/sre
-  sid/train_ivector_extractor.sh --cmd "$train_cmd --mem 35G" \
-    --ivector-dim 600 \
-    --num-iters 5 \
-    --no-vad true \
-    exp/full_ubm_erep/final.ubm data/${train_data} \
-    exp/extractor_erep
+  # Filter out the clean + augmented portion of the SRE list.  This will be used to
+  # train the PLDA model later in the script.
+  utils/copy_data_dir.sh data/${train_data}_combined data/${train_plda}
+  utils/filter_scp.pl data/${train_data}/spk2utt data/${train_data}_combined/spk2utt | utils/spk2utt_to_utt2spk.pl > data/${train_plda}/utt2spk
+  utils/fix_data_dir.sh data/${train_plda}
 fi
 
 if [ $stage -le 5 ]; then
   # Extract i-vectors for SRE data (includes Mixer 6). We'll use this for
   # things like LDA or PLDA.
-  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 64 \
-    --no-vad true \
-    exp/extractor_erep data/${train_plda} \
+  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 40 \
+    exp/extractor data/${train_plda} \
     exp/ivectors_${train_plda}
 
   # The SRE16 major is an unlabeled dataset consisting of Cantonese and
   # and Tagalog.  This is useful for things like centering, whitening and
   # score normalization.
-  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 64 \
-    --no-vad true \
-    exp/extractor_erep data/${train_data} \
+  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 40 \
+    exp/extractor data/${train_data} \
     exp/ivectors_${train_data}
 
   # The SRE16 test data
   sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
-    --no-vad true \
-    exp/extractor_erep data/${trial_data} \
+    exp/extractor data/${trial_data} \
     exp/ivectors_${trial_data}
 
   # The SRE16 enroll data
   sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
-    --no-vad true \
-    exp/extractor_erep data/${enroll_data} \
+    exp/extractor data/${enroll_data} \
     exp/ivectors_${enroll_data}
 fi
 
@@ -249,19 +225,19 @@ fi
 
 if [ $stage -le 7 ]; then
   # Get results using the out-of-domain PLDA model
-  $train_cmd exp/scores_erep/log/sre16_eval_scoring.log \
+  $train_cmd exp/scores/log/sre16_eval_scoring.log \
     ivector-plda-scoring --normalize-length=true \
     --num-utts=ark:exp/ivectors_${enroll_data}/num_utts.ark \
     "ivector-copy-plda --smoothing=0.0 exp/ivectors_${train_plda}/plda - |" \
     "ark:ivector-mean ark:data/${enroll_data}/spk2utt scp:exp/ivectors_${enroll_data}/ivector.scp ark:- | ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec ark:- ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
     "ark:ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec scp:exp/ivectors_${trial_data}/ivector.scp ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
-    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores_erep/sre16_eval_scores || exit 1;
+    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores/sre16_eval_scores || exit 1;
 
-  utils/filter_scp.pl $sre16_trials_tgl exp/scores_erep/sre16_eval_scores > exp/scores_erep/sre16_eval_tgl_scores
-  utils/filter_scp.pl $sre16_trials_yue exp/scores_erep/sre16_eval_scores > exp/scores_erep/sre16_eval_yue_scores
-  pooled_eer=$(paste $sre16_trials exp/scores_erep/sre16_eval_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  tgl_eer=$(paste $sre16_trials_tgl exp/scores_erep/sre16_eval_tgl_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  yue_eer=$(paste $sre16_trials_yue exp/scores_erep/sre16_eval_yue_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  utils/filter_scp.pl $sre16_trials_tgl exp/scores/sre16_eval_scores > exp/scores/sre16_eval_tgl_scores
+  utils/filter_scp.pl $sre16_trials_yue exp/scores/sre16_eval_scores > exp/scores/sre16_eval_yue_scores
+  pooled_eer=$(paste $sre16_trials exp/scores/sre16_eval_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  tgl_eer=$(paste $sre16_trials_tgl exp/scores/sre16_eval_tgl_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  yue_eer=$(paste $sre16_trials_yue exp/scores/sre16_eval_yue_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
   echo "Using Out-of-Domain PLDA, EER: Pooled ${pooled_eer}%, Male ${tgl_eer}%, Female ${yue_eer}%"
   # EER: Pooled 13.65%, Tagalog 17.73%, Cantonese 9.612%
 fi
@@ -269,19 +245,19 @@ fi
 if [ $stage -le 8 ]; then
   # Get results using an adapted PLDA model. In the future we'll replace
   # this (or add to this) with a clustering based approach to PLDA adaptation.
-  $train_cmd exp/scores_erep/log/sre16_eval_scoring_adapt.log \
+  $train_cmd exp/scores/log/sre16_eval_scoring_adapt.log \
     ivector-plda-scoring --normalize-length=true \
     --num-utts=ark:exp/ivectors_${enroll_data}/num_utts.ark \
     "ivector-copy-plda --smoothing=0.0 exp/ivectors_${train_data}/plda_adapt - |" \
     "ark:ivector-mean ark:data/${enroll_data}/spk2utt scp:exp/ivectors_${enroll_data}/ivector.scp ark:- | ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec ark:- ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
     "ark:ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec scp:exp/ivectors_${trial_data}/ivector.scp ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
-    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores_erep/sre16_eval_scores_adapt || exit 1;
+    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores/sre16_eval_scores_adapt || exit 1;
 
-  utils/filter_scp.pl $sre16_trials_tgl exp/scores_erep/sre16_eval_scores_adapt > exp/scores_erep/sre16_eval_tgl_scores_adapt
-  utils/filter_scp.pl $sre16_trials_yue exp/scores_erep/sre16_eval_scores_adapt > exp/scores_erep/sre16_eval_yue_scores_adapt
-  pooled_eer=$(paste $sre16_trials exp/scores_erep/sre16_eval_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  tgl_eer=$(paste $sre16_trials_tgl exp/scores_erep/sre16_eval_tgl_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  yue_eer=$(paste $sre16_trials_yue exp/scores_erep/sre16_eval_yue_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  utils/filter_scp.pl $sre16_trials_tgl exp/scores/sre16_eval_scores_adapt > exp/scores/sre16_eval_tgl_scores_adapt
+  utils/filter_scp.pl $sre16_trials_yue exp/scores/sre16_eval_scores_adapt > exp/scores/sre16_eval_yue_scores_adapt
+  pooled_eer=$(paste $sre16_trials exp/scores/sre16_eval_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  tgl_eer=$(paste $sre16_trials_tgl exp/scores/sre16_eval_tgl_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  yue_eer=$(paste $sre16_trials_yue exp/scores/sre16_eval_yue_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
   echo "Using Adapted PLDA, EER: Pooled ${pooled_eer}%, Male ${tgl_eer}%, Female ${yue_eer}%"
   # EER: Pooled 12.98%, Tagalog 17.8%, Cantonese 8.35%
   #

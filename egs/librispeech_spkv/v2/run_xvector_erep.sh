@@ -26,12 +26,14 @@ vaddir=`pwd`/mfcc
 data=/home/bsrivast/asr_data
 
 # SRE16 trials
-sre16_trials=data/kadv0_test_clean_trial/trials
-sre16_trials_tgl=data/kadv0_test_clean_trial/trials_male
-sre16_trials_yue=data/kadv0_test_clean_trial/trials_female
-nnet_dir=exp/xvector_nnet_1a_kadv0
+sre16_trials=data/kadv10_test_clean_trial/trials
+sre16_trials_tgl=data/kadv10_test_clean_trial/trials_male
+sre16_trials_yue=data/kadv10_test_clean_trial/trials_female
+nnet_dir=exp/xvector_nnet_1a_kadv10_rm457
+#nnet_egs_dir=exp/xvector_nnet_1a_kadv5/egs
+nnet_egs_dir=$nnet_dir/egs
 
-stage=6
+stage=4
 if [ $stage -le 0 ]; then
 
   # format the data as Kaldi data directories
@@ -250,36 +252,38 @@ if [ $stage -le 3 ]; then
   utils/fix_data_dir.sh data/${train_data}_combined_no_sil
 fi
 
-train_data=kadv0_train_960_combined_no_sil
-train_plda=kadv0_train_plda_combined
-enroll_data=kadv0_test_clean_enroll
-trial_data=kadv0_test_clean_trial
+train_data=kadv10_train_960_combined_no_sil
+train_plda=kadv10_train_plda_combined
+enroll_data=kadv10_test_clean_enroll
+trial_data=kadv10_test_clean_trial
 
-local/nnet3/xvector/run_xvector.sh --stage $stage --train-stage -1 \
+local/nnet3/xvector/run_xvector_rm457.sh --stage $stage --train-stage -1 \
   --data data/${train_data} --nnet-dir $nnet_dir \
-  --egs-dir $nnet_dir/egs
+  --egs-dir $nnet_egs_dir
+
+nj=24
 
 if [ $stage -le 8 ]; then
   # The SRE16 major is an unlabeled dataset consisting of Cantonese and
   # and Tagalog.  This is useful for things like centering, whitening and
   # score normalization.
-  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 56 \
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
     $nnet_dir data/${train_data} \
     exp/xvectors_${train_data}
 
   # Extract xvectors for SRE data (includes Mixer 6). We'll use this for
   # things like LDA or PLDA.
-  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 12G" --nj 56 \
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 12G" --nj $nj \
     $nnet_dir data/${train_plda} \
     exp/xvectors_${train_plda}
 
   # The SRE16 test data
-  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
     $nnet_dir data/${trial_data} \
     exp/xvectors_${trial_data}
 
   # The SRE16 enroll data
-  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
     $nnet_dir data/${enroll_data} \
     exp/xvectors_${enroll_data}
 fi
