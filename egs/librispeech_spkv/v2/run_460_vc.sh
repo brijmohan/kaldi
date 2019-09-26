@@ -29,22 +29,28 @@ data=/home/bsrivastava/asr_data
 sre16_trials=data/test_clean_trial/trials
 sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
+
+tag="_sg400k_s3" # _sg400k_s3 = stargan strategy3, _vm1 = voicemask, _pwvc_s1 = GMM strategy1
+
 #nnet_dir=exp/xvector_nnet_1a_460baseline_rm457 # CLEAN MODEL
-#nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_sg400k_s3 # VM1 MODEL
-nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_vm1 # VM1 MODEL
+#nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_sg400k_s3 # Stargan MODEL
+nnet_dir=exp/xvector_nnet_1a_460baseline_rm457${tag} # VM1 MODEL
 #nnet_egs_dir=exp/xvector_nnet_1a_kadv5/egs
 nnet_egs_dir=$nnet_dir/egs
 
-#train_data=train_460_sg400k_s3
-#train_plda=train_plda_460_sg400k_s3
-#enroll_data=test_clean_enroll_sg400k_s3
-#trial_data=test_clean_trial_sg400k_s3
-train_data=train_460_vm1
-train_plda=train_plda_460_vm1
-enroll_data=test_clean_enroll_vm1
-trial_data=test_clean_trial_sg_s3
+train_data=train_460${tag}
+train_plda=train_plda_460${tag}
+enroll_data=test_clean_enroll${tag}
+trial_data=test_clean_trial${tag}
+#train_data=train_460_vm1
+#train_plda=train_plda_460_vm1
+#enroll_data=test_clean_enroll_vm1
+#trial_data=test_clean_trial_sg_s3
 
-stage=8
+score_file_adapt=data/${trial_data}/xvector_scores_adapt
+score_dist_plot=data/${trial_data}/xvector_score_dist.png
+
+stage=10
 if [ $stage -le 0 ]; then
 
   # format the data as Kaldi data directories
@@ -213,7 +219,6 @@ if [ $stage -le 8 ]; then
   # The SRE16 major is an unlabeled dataset consisting of Cantonese and
   # and Tagalog.  This is useful for things like centering, whitening and
   # score normalization.
-  : '
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
     $nnet_dir data/${xvector_train_data} \
     exp/xvectors_${xvector_train_data}
@@ -223,19 +228,16 @@ if [ $stage -le 8 ]; then
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 12G" --nj $nj \
     $nnet_dir data/${train_plda} \
     exp/xvectors_${train_plda}
-  '
 
   # The SRE16 test data
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
     $nnet_dir data/${trial_data} \
     exp/xvectors_${trial_data}
 
-  : '
   # The SRE16 enroll data
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
     $nnet_dir data/${enroll_data} \
     exp/xvectors_${enroll_data}
-  '
 fi
 
 if [ $stage -le 9 ]; then
@@ -296,11 +298,11 @@ if [ $stage -le 11 ]; then
     "ivector-copy-plda --smoothing=0.0 exp/xvectors_${xvector_train_data}/plda_adapt - |" \
     "ark:ivector-mean ark:data/${enroll_data}/spk2utt scp:exp/xvectors_${enroll_data}/xvector.scp ark:- | ivector-subtract-global-mean exp/xvectors_${xvector_train_data}/mean.vec ark:- ark:- | transform-vec exp/xvectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
     "ark:ivector-subtract-global-mean exp/xvectors_${xvector_train_data}/mean.vec scp:exp/xvectors_${trial_data}/xvector.scp ark:- | transform-vec exp/xvectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
-    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores/erep_eval_scores_adapt || exit 1;
+    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" $score_file_adapt || exit 1;
 
-  utils/filter_scp.pl $sre16_trials_tgl exp/scores/erep_eval_scores_adapt > exp/scores/erep_eval_tgl_scores_adapt
-  utils/filter_scp.pl $sre16_trials_yue exp/scores/erep_eval_scores_adapt > exp/scores/erep_eval_yue_scores_adapt
-  pooled_eer=$(paste $sre16_trials exp/scores/erep_eval_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  utils/filter_scp.pl $sre16_trials_tgl $score_file_adapt > exp/scores/erep_eval_tgl_scores_adapt
+  utils/filter_scp.pl $sre16_trials_yue $score_file_adapt > exp/scores/erep_eval_yue_scores_adapt
+  pooled_eer=$(paste $sre16_trials $score_file_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
   tgl_eer=$(paste $sre16_trials_tgl exp/scores/erep_eval_tgl_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
   yue_eer=$(paste $sre16_trials_yue exp/scores/erep_eval_yue_scores_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
   echo "Using Adapted PLDA, EER: Pooled ${pooled_eer}%, Male ${tgl_eer}%, Female ${yue_eer}%"
@@ -325,3 +327,9 @@ if [ $stage -le 11 ]; then
   # min_Cprimary:  0.76
   # act_Cprimary:  0.81
 fi
+
+if [ $stage -le 12 ]; then
+    python local/plot_trial_score_dist.py $sre16_trials $score_file_adapt $score_dist_plot 
+    echo "Plot saved as:" $score_dist_plot
+fi
+

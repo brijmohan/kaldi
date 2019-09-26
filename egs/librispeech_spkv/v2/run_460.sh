@@ -38,7 +38,7 @@ train_plda=train_plda_460
 enroll_data=test_clean_enroll
 trial_data=test_clean_trial
 
-stage=6
+stage=11
 if [ $stage -le 0 ]; then
 
   # format the data as Kaldi data directories
@@ -311,4 +311,9 @@ if [ $stage -le 11 ]; then
   # EER:          12.63
   # min_Cprimary:  0.76
   # act_Cprimary:  0.81
+fi
+
+if [ $stage -le 12 ]; then
+    python local/plot_trial_score_dist.py $sre16_trials exp/scores/erep_eval_scores_adapt data/$trial_data/xvector_score_dist.png 
+    echo "Plot saved as:" data/$trial_data/xvector_score_dist.png
 fi
