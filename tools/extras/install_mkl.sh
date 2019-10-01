@@ -213,7 +213,7 @@ Install_debian () {
   # apt is much more involved to configure than other package managers, as fas
   # as third-party security keys go.
   ( set -x;
-    apt-get update &&
+    apt-get update --allow-unauthenticated --allow-insecure-repositories &&
     apt-get install -y wget apt-transport-https ca-certificates gnupg &&
     wget -qO- $intel_key_url | apt-key --keyring $keyring add - &&
     echo "deb [signed-by=${keyring}] $apt_repo all main" \
@@ -224,8 +224,8 @@ Install_debian () {
   fi
 
   ( set +x
-    apt-get update &&
-    apt-get install -y "$package" ) || return 1
+    apt-get update --allow-unauthenticated --allow-insecure-repositories &&
+    apt-get install --allow-unauthenticated -y "$package" ) || return 1
 
   # Print the message after the large install, so the user may notice. I hope...
   if [[ $apt_ver < '001002' ]]; then

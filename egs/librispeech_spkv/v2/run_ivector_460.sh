@@ -91,7 +91,7 @@ if [ $stage -le 3 ]; then
   sid/train_ivector_extractor.sh --cmd "$train_cmd --mem 35G" \
     --ivector-dim 600 \
     --num-iters 5 \
-    --stage 1 \
+    --stage 3 \
     exp/full_ubm${tag}/final.ubm data/${train_data} \
     exp/extractor${tag}
     #--stage 4 \
