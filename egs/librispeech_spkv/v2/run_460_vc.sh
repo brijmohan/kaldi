@@ -30,7 +30,7 @@ sre16_trials=data/test_clean_trial/trials
 sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
 
-tag="_sg400k_s3" # _sg400k_s3 = stargan strategy3, _vm1 = voicemask, _pwvc_s1 = GMM strategy1
+tag="_vm1" # _sg400k_s3 = stargan strategy3, _vm1 = voicemask, _pwvc_s1 = GMM strategy1
 
 #nnet_dir=exp/xvector_nnet_1a_460baseline_rm457 # CLEAN MODEL
 #nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_sg400k_s3 # Stargan MODEL
@@ -213,12 +213,13 @@ local/nnet3/xvector/run_xvector_rm457.sh --stage $stage --train-stage -1 \
   --data data/${xvector_train_data} --nnet-dir $nnet_dir \
   --egs-dir $nnet_egs_dir
 
-nj=48
+nj=32
 
 if [ $stage -le 8 ]; then
   # The SRE16 major is an unlabeled dataset consisting of Cantonese and
   # and Tagalog.  This is useful for things like centering, whitening and
   # score normalization.
+  : '
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
     $nnet_dir data/${xvector_train_data} \
     exp/xvectors_${xvector_train_data}
@@ -228,6 +229,7 @@ if [ $stage -le 8 ]; then
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 12G" --nj $nj \
     $nnet_dir data/${train_plda} \
     exp/xvectors_${train_plda}
+  '
 
   # The SRE16 test data
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
