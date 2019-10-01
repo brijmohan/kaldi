@@ -57,7 +57,7 @@ if [ $stage -le 0 ]; then
 fi
 #exit 0
 
-nj=56
+nj=32
 if [ $stage -le 1 ]; then
   # Make MFCCs and compute the energy-based VAD for each dataset
   #for name in dev_clean test_clean dev_other test_other train_960 test_clean_enroll test_clean_trial; do
@@ -91,7 +91,6 @@ if [ $stage -le 3 ]; then
   sid/train_ivector_extractor.sh --cmd "$train_cmd --mem 35G" \
     --ivector-dim 600 \
     --num-iters 5 \
-    --stage 1 \
     exp/full_ubm${tag}/final.ubm data/${train_data} \
     exp/extractor${tag}
     #--stage 4 \
