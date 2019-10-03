@@ -36,19 +36,19 @@ score_file=data/${trial_data}/scores
 score_file_adapt=data/${trial_data}/scores_adapt
 score_dist=data/${trial_data}/ivector_dist.png
 
-stage=3
+stage=0
 if [ $stage -le 0 ]; then
 
   # format the data as Kaldi data directories
   #for part in dev-clean test-clean dev-other test-other train-clean-100 train-clean-360 train-other-500; do
   for part in train-clean-100 train-clean-360; do
     # use underscore-separated names in data directories.
-    local/data_prep_adv.sh $data/LibriSpeech/$part data/$(echo $part | sed s/-/_/g)
+    local/data_prep_adv.sh $data/LibriSpeech${tag}/$part data/$(echo $part | sed s/-/_/g)${tag}
   done
 
   # Combine all training data into one
-  utils/combine_data.sh data/train_460 \
-	  data/train_clean_100 data/train_clean_360
+  utils/combine_data.sh data/${train_data} \
+	  data/train_clean_100${tag} data/train_clean_360${tag}
 
   # Make enrollment and trial data
   #python local/make_librispeech_eval.py ./proto $data/LibriSpeech/test-clean
@@ -57,12 +57,12 @@ if [ $stage -le 0 ]; then
 fi
 #exit 0
 
-nj=32
+nj=56
 if [ $stage -le 1 ]; then
   # Make MFCCs and compute the energy-based VAD for each dataset
   #for name in dev_clean test_clean dev_other test_other train_960 test_clean_enroll test_clean_trial; do
-  #for name in ${train_data} ${enroll_data} ${trial_data} ; do
-  for name in ${trial_data} ; do
+  for name in ${train_data} ${enroll_data} ${trial_data} ; do
+  #for name in ${trial_data} ; do
     steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj 29 --cmd "$train_cmd" \
       data/${name} exp/make_mfcc $mfccdir
     utils/fix_data_dir.sh data/${name}
