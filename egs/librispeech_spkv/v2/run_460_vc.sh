@@ -30,44 +30,51 @@ sre16_trials=data/test_clean_trial/trials
 sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
 
-tag="_vm1" # _sg400k_s3 = stargan strategy3, _vm1 = voicemask, _pwvc_s1 = GMM strategy1
+tag="_dar_s1" # _sg400k_s3 = stargan strategy3, _vm1 = voicemask, _pwvc_s1 = GMM strategy1
 
-#nnet_dir=exp/xvector_nnet_1a_460baseline_rm457 # CLEAN MODEL
+nnet_dir=exp/xvector_nnet_1a_460baseline_rm457 # CLEAN MODEL
 #nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_sg400k_s3 # Stargan MODEL
-nnet_dir=exp/xvector_nnet_1a_460baseline_rm457${tag} # VM1 MODEL
+#nnet_dir=exp/xvector_nnet_1a_460baseline_rm457${tag} # VM1 MODEL
 #nnet_egs_dir=exp/xvector_nnet_1a_kadv5/egs
 nnet_egs_dir=$nnet_dir/egs
 
-train_data=train_460${tag}
-train_plda=train_plda_460${tag}
-enroll_data=test_clean_enroll${tag}
+#train_data=train_460${tag}
+#train_plda=train_plda_460${tag}
+#enroll_data=test_clean_enroll${tag}
 trial_data=test_clean_trial${tag}
-#train_data=train_460_vm1
-#train_plda=train_plda_460_vm1
-#enroll_data=test_clean_enroll_vm1
+train_data=train_460
+train_plda=train_plda_460
+enroll_data=test_clean_enroll
 #trial_data=test_clean_trial_sg_s3
 
 score_file_adapt=data/${trial_data}/xvector_scores_adapt
 score_dist_plot=data/${trial_data}/xvector_score_dist.png
 
-stage=10
+stage=8
+if [ $stage -le -1 ]; then
+  # Sync VC transformed folders
+  rsync -avzm --ignore-existing  $data/LibriSpeech/train-clean-360/* $data/LibriSpeech${tag}/train-clean-360/
+  rsync -avzm --ignore-existing  $data/LibriSpeech/train-clean-100/* $data/LibriSpeech${tag}/train-clean-100/
+  rsync -avzm --ignore-existing  $data/LibriSpeech/test-clean/* $data/LibriSpeech${tag}/test-clean/
+fi
+
 if [ $stage -le 0 ]; then
 
   # format the data as Kaldi data directories
   #for part in dev-clean test-clean dev-other test-other train-clean-100 train-clean-360 train-other-500; do
   for part in train-clean-100 train-clean-360; do
     # use underscore-separated names in data directories.
-    local/data_prep_adv.sh $data/LibriSpeech/$part data/$(echo $part | sed s/-/_/g)
+    local/data_prep_adv.sh $data/LibriSpeech${tag}/$part data/$(echo $part | sed s/-/_/g)${tag}
   done
 
   # Combine all training data into one
-  utils/combine_data.sh data/train_460 \
-	  data/train_clean_100 data/train_clean_360
+  utils/combine_data.sh data/${train_data} \
+	  data/train_clean_100${tag} data/train_clean_360${tag}
 
   # Make enrollment and trial data
-  #python local/make_librispeech_eval.py ./proto $data/LibriSpeech/test-clean
-  #utils/utt2spk_to_spk2utt.pl data/test_clean_enroll/utt2spk > data/test_clean_enroll/spk2utt
-  #utils/utt2spk_to_spk2utt.pl data/test_clean_trial/utt2spk > data/test_clean_trial/spk2utt
+  python local/make_librispeech_eval.py ./proto $data/LibriSpeech${tag}/test-clean ${tag}
+  utils/utt2spk_to_spk2utt.pl data/${enroll_data}/utt2spk > data/${enroll_data}/spk2utt
+  utils/utt2spk_to_spk2utt.pl data/${trial_data}/utt2spk > data/${trial_data}/spk2utt
 fi
 #exit 0
 
@@ -88,7 +95,7 @@ if [ $stage -le 1 ]; then
   done
 fi
 
-nj=48
+nj=32
 
 # In this section, we augment the SWBD and SRE data with reverberation,
 # noise, music, and babble, and combined it with the clean data.
@@ -229,6 +236,11 @@ if [ $stage -le 8 ]; then
   sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 12G" --nj $nj \
     $nnet_dir data/${train_plda} \
     exp/xvectors_${train_plda}
+
+  # The SRE16 enroll data
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
+    $nnet_dir data/${enroll_data} \
+    exp/xvectors_${enroll_data}
   '
 
   # The SRE16 test data
@@ -236,10 +248,6 @@ if [ $stage -le 8 ]; then
     $nnet_dir data/${trial_data} \
     exp/xvectors_${trial_data}
 
-  # The SRE16 enroll data
-  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
-    $nnet_dir data/${enroll_data} \
-    exp/xvectors_${enroll_data}
 fi
 
 if [ $stage -le 9 ]; then

@@ -1,5 +1,5 @@
 '''
-Usage: python local/make_librispeech_eval.py <protocol_files> <data_path>
+Usage: python local/make_librispeech_eval.py <protocol_files> <data_path> <exp_tag>
 '''
 import sys
 import os
@@ -9,6 +9,7 @@ from os.path import join, exists
 args = sys.argv
 proto_path = args[1]
 data_path = args[2]
+exp_tag = args[3]
 
 enroll_files = ["Librispeech.asv_test_female.trn",
                 "Librispeech.asv_test_male.trn"]
@@ -17,7 +18,7 @@ trial_files = ["Librispeech.asv_test_male.trl",
                "Librispeech.asv_test_female.trl"]
 
 # Prepare enroll data
-enroll_dir = 'data/test_clean_enroll'
+enroll_dir = 'data/test_clean_enroll'+exp_tag
 if exists(enroll_dir):
     shutil.rmtree(enroll_dir)
 os.makedirs(enroll_dir)
@@ -45,7 +46,7 @@ with open(join(enroll_dir, 'utt2spk'), 'w') as f:
 
 
 # Prepare trial data
-trial_dir = 'data/test_clean_trial'
+trial_dir = 'data/test_clean_trial'+exp_tag
 if exists(trial_dir):
     shutil.rmtree(trial_dir)
 os.makedirs(trial_dir)
