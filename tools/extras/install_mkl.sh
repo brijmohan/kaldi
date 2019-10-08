@@ -225,7 +225,7 @@ Install_debian () {
 
   ( set +x
     apt-get update --allow-unauthenticated --allow-insecure-repositories &&
-    apt-get install -y --allow-unauthenticated "$package" ) || return 1
+    apt-get install --allow-unauthenticated -y "$package" ) || return 1
 
   # Print the message after the large install, so the user may notice. I hope...
   if [[ $apt_ver < '001002' ]]; then

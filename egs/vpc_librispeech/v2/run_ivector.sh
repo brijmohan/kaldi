@@ -26,18 +26,11 @@ sre16_trials=data/test_clean_trial/trials
 sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
 
-tag="_vm1" # vm1 = voicemask
+tag="_vm1" # experiment tag
 train_data=train_460${tag}
 train_plda=train_plda_460${tag}
 enroll_data=test_clean_enroll${tag}
 trial_data=test_clean_trial${tag}
-#train_data=train_460
-#train_plda=train_plda_460
-#enroll_data=test_clean_enroll
-#trial_data=test_clean_trial
-
-ivector_extractor=exp/extractor${tag}
-#ivector_extractor=exp/extractor # Baseline model
 
 score_file=data/${trial_data}/scores
 score_file_adapt=data/${trial_data}/scores_adapt
@@ -45,11 +38,6 @@ score_dist=data/${trial_data}/ivector_dist.png
 
 stage=0
 if [ $stage -le 0 ]; then
-
-  # Sync VC transformed folders
-  rsync -avzm --ignore-existing  $data/LibriSpeech/train-clean-360/* $data/LibriSpeech${tag}/train-clean-360/
-  rsync -avzm --ignore-existing  $data/LibriSpeech/train-clean-100/* $data/LibriSpeech${tag}/train-clean-100/
-  rsync -avzm --ignore-existing  $data/LibriSpeech/test-clean/* $data/LibriSpeech${tag}/test-clean/
 
   # format the data as Kaldi data directories
   #for part in dev-clean test-clean dev-other test-other train-clean-100 train-clean-360 train-other-500; do
@@ -63,17 +51,16 @@ if [ $stage -le 0 ]; then
 	  data/train_clean_100${tag} data/train_clean_360${tag}
 
   # Make enrollment and trial data
-  python local/make_librispeech_eval.py ./proto $data/LibriSpeech${tag}/test-clean ${tag}
-  utils/utt2spk_to_spk2utt.pl data/${enroll_data}/utt2spk > data/${enroll_data}/spk2utt
-  utils/utt2spk_to_spk2utt.pl data/${trial_data}/utt2spk > data/${trial_data}/spk2utt
+  python local/make_librispeech_eval.py ./proto $data/LibriSpeech/test-clean
+  utils/utt2spk_to_spk2utt.pl data/test_clean_enroll/utt2spk > data/test_clean_enroll/spk2utt
+  utils/utt2spk_to_spk2utt.pl data/test_clean_trial/utt2spk > data/test_clean_trial/spk2utt
 fi
+#exit 0
 
 nj=56
 if [ $stage -le 1 ]; then
   # Make MFCCs and compute the energy-based VAD for each dataset
-  #for name in dev_clean test_clean dev_other test_other train_960 test_clean_enroll test_clean_trial; do
   for name in ${train_data} ${enroll_data} ${trial_data} ; do
-  #for name in ${trial_data} ; do
     steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj 29 --cmd "$train_cmd" \
       data/${name} exp/make_mfcc $mfccdir
     utils/fix_data_dir.sh data/${name}
@@ -98,13 +85,12 @@ fi
 
 if [ $stage -le 3 ]; then
   # Train the i-vector extractor.
-  #utils/combine_data.sh data/swbd_sre data/swbd data/sre
   sid/train_ivector_extractor.sh --cmd "$train_cmd --mem 35G" \
     --ivector-dim 600 \
     --num-iters 5 \
     --stage 3 \
     exp/full_ubm${tag}/final.ubm data/${train_data} \
-    ${ivector_extractor}
+    exp/extractor${tag}
     #--stage 4 \
 fi
 
@@ -186,31 +172,29 @@ if [ $stage -le 4 ]; then
   utils/fix_data_dir.sh data/${train_plda}
 fi
 
-nj=26
 if [ $stage -le 5 ]; then
   # Extract i-vectors for SRE data (includes Mixer 6). We'll use this for
   # things like LDA or PLDA.
   sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
-    ${ivector_extractor} data/${train_plda} \
+    exp/extractor${tag} data/${train_plda} \
     exp/ivectors_${train_plda}
 
   # The SRE16 major is an unlabeled dataset consisting of Cantonese and
   # and Tagalog.  This is useful for things like centering, whitening and
   # score normalization.
   sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
-    ${ivector_extractor} data/${train_data} \
+    exp/extractor${tag} data/${train_data} \
     exp/ivectors_${train_data}
-
-  # The SRE16 enroll data
-  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
-    ${ivector_extractor} data/${enroll_data} \
-    exp/ivectors_${enroll_data}
 
   # The SRE16 test data
   sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
-    ${ivector_extractor} data/${trial_data} \
+    exp/extractor${tag} data/${trial_data} \
     exp/ivectors_${trial_data}
 
+  # The SRE16 enroll data
+  sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
+    exp/extractor${tag} data/${enroll_data} \
+    exp/ivectors_${enroll_data}
 fi
 
 if [ $stage -le 6 ]; then
@@ -298,7 +282,3 @@ if [ $stage -le 8 ]; then
   # act_Cprimary: 0.87
 fi
 
-if [ $stage -le 9 ]; then
-    python local/plot_trial_score_dist.py $sre16_trials $score_file_adapt $score_dist 
-    echo "Plot saved as:" $score_dist
-fi
