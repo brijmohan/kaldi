@@ -27,23 +27,23 @@ sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
 
 tag="_dar_s1" # vm1 = voicemask
-train_data=train_460${tag}
-train_plda=train_plda_460${tag}
-enroll_data=test_clean_enroll${tag}
+#train_data=train_460${tag}
+#train_plda=train_plda_460${tag}
+#enroll_data=test_clean_enroll${tag}
 trial_data=test_clean_trial${tag}
-#train_data=train_460
-#train_plda=train_plda_460
-#enroll_data=test_clean_enroll
+train_data=train_460
+train_plda=train_plda_460
+enroll_data=test_clean_enroll
 #trial_data=test_clean_trial
 
-ivector_extractor=exp/extractor${tag}
-#ivector_extractor=exp/extractor # Baseline model
+#ivector_extractor=exp/extractor${tag}
+ivector_extractor=exp/extractor # Baseline model
 
 score_file=data/${trial_data}/scores
 score_file_adapt=data/${trial_data}/scores_adapt
 score_dist=data/${trial_data}/ivector_dist.png
 
-stage=-1
+stage=8
 
 if [ $stage -le -1 ]; then
   # Sync VC transformed folders
@@ -252,6 +252,8 @@ if [ $stage -le 8 ]; then
   # Get results using the out-of-domain PLDA model
   $train_cmd exp/scores/log/sre16_eval_scoring.log \
     ivector-plda-scoring --normalize-length=true \
+    --num-utts=ark:exp/ivectors_${enroll_data}/num_utts.ark \
+    "ivector-copy-plda --smoothing=0.0 exp/ivectors_${train_plda}/plda - |" \
     "ark:ivector-mean ark:data/${enroll_data}/spk2utt scp:exp/ivectors_${enroll_data}/ivector.scp ark:- | ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec ark:- ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
     "ark:ivector-subtract-global-mean exp/ivectors_${train_data}/mean.vec scp:exp/ivectors_${trial_data}/ivector.scp ark:- | transform-vec exp/ivectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
     "cat '$sre16_trials' | cut -d\  --fields=1,2 |" ${score_file} || exit 1;
