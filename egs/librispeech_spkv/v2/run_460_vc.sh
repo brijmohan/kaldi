@@ -30,7 +30,7 @@ sre16_trials=data/test_clean_trial/trials
 sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
 
-tag="_dar_s1" # _sg400k_s3 = stargan strategy3, _vm1 = voicemask, _pwvc_s1 = GMM strategy1
+tag="_dar_s2_16k" # _sg400k_s3 = stargan strategy3, _vm1 = voicemask, _pwvc_s1 = GMM strategy1
 
 nnet_dir=exp/xvector_nnet_1a_460baseline_rm457 # CLEAN MODEL
 #nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_sg400k_s3 # Stargan MODEL
