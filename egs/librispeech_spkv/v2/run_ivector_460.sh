@@ -193,6 +193,7 @@ nj=29
 if [ $stage -le 5 ]; then
   # Extract i-vectors for SRE data (includes Mixer 6). We'll use this for
   # things like LDA or PLDA.
+
   sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
     ${ivector_extractor} data/${train_plda} \
     exp/ivectors_${train_plda}
@@ -208,6 +209,9 @@ if [ $stage -le 5 ]; then
     ${ivector_extractor} data/${enroll_data} \
     exp/ivectors_${enroll_data}
 
+fi
+
+if [ $stage -le 6 ]; then
   # The SRE16 test data
   sid/extract_ivectors.sh --cmd "$train_cmd --mem 6G" --nj 29 \
     ${ivector_extractor} data/${trial_data} \
@@ -215,7 +219,7 @@ if [ $stage -le 5 ]; then
 
 fi
 
-if [ $stage -le 6 ]; then
+if [ $stage -le 7 ]; then
   # Compute the mean vector for centering the evaluation i-vectors.
   $train_cmd exp/ivectors_${train_data}/log/compute_mean.log \
     ivector-mean scp:exp/ivectors_${train_data}/ivector.scp \
@@ -244,7 +248,7 @@ if [ $stage -le 6 ]; then
     exp/ivectors_${train_data}/plda_adapt || exit 1;
 fi
 
-if [ $stage -le 7 ]; then
+if [ $stage -le 8 ]; then
   # Get results using the out-of-domain PLDA model
   $train_cmd exp/scores/log/sre16_eval_scoring.log \
     ivector-plda-scoring --normalize-length=true \
@@ -263,7 +267,7 @@ if [ $stage -le 7 ]; then
   # EER: Pooled 13.65%, Tagalog 17.73%, Cantonese 9.612%
 fi
 
-if [ $stage -le 8 ]; then
+if [ $stage -le 9 ]; then
   # Get results using an adapted PLDA model. In the future we'll replace
   # this (or add to this) with a clustering based approach to PLDA adaptation.
   $train_cmd exp/scores/log/sre16_eval_scoring_adapt.log \
@@ -300,7 +304,7 @@ if [ $stage -le 8 ]; then
   # act_Cprimary: 0.87
 fi
 
-if [ $stage -le 9 ]; then
+if [ $stage -le 10 ]; then
     python local/plot_trial_score_dist.py $sre16_trials $score_file_adapt $score_dist 
     echo "Plot saved as:" $score_dist
 fi
