@@ -26,10 +26,10 @@ sre16_trials=data/test_clean_trial/trials
 sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
 
-tag="_dar_s3_16k" # vm1 = voicemask
-#train_data=train_460${tag}
-#train_plda=train_plda_460${tag}
-#enroll_data=test_clean_enroll${tag}
+tag="_dar_s2_16k" # vm1 = voicemask
+train_data=train_460${tag}
+train_plda=train_plda_460${tag}
+enroll_data=test_clean_enroll${tag}
 trial_data=test_clean_trial${tag}
 train_data=train_460
 train_plda=train_plda_460
