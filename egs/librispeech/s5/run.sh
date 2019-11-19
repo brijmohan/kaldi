@@ -4,13 +4,13 @@
 # Set this to somewhere where you want to put your data, or where
 # someone else has already put it.  You'll want to change this
 # if you're not on the CLSP grid.
-data=/export/a15/vpanayotov/data
+data=/home/bsrivastava/asr_data
 
 # base url for downloads.
 data_url=www.openslr.org/resources/12
 lm_url=www.openslr.org/resources/11
 mfccdir=mfcc
-stage=1
+stage=21
 
 . ./cmd.sh
 . ./path.sh
@@ -24,9 +24,9 @@ if [ $stage -le 1 ]; then
   # download the data.  Note: we're using the 100 hour setup for
   # now; later in the script we'll download more and use it to train neural
   # nets.
-  for part in dev-clean test-clean dev-other test-other train-clean-100; do
-    local/download_and_untar.sh $data $data_url $part
-  done
+  #for part in dev-clean test-clean dev-other test-other train-clean-100; do
+  #  local/download_and_untar.sh $data $data_url $part
+  #done
 
 
   # download the LM resources
@@ -84,10 +84,11 @@ if [ $stage -le 5 ]; then
   fi
 fi
 
+nj=32
 
 if [ $stage -le 6 ]; then
   for part in dev_clean test_clean dev_other test_other train_clean_100; do
-    steps/make_mfcc.sh --cmd "$train_cmd" --nj 40 data/$part exp/make_mfcc/$part $mfccdir
+    steps/make_mfcc.sh --cmd "$train_cmd" --nj $nj data/$part exp/make_mfcc/$part $mfccdir
     steps/compute_cmvn_stats.sh data/$part exp/make_mfcc/$part $mfccdir
   done
 fi
@@ -277,12 +278,12 @@ if [ $stage -le 14 ] && false; then
 fi
 
 if [ $stage -le 15 ]; then
-  local/download_and_untar.sh $data $data_url train-clean-360
+  #local/download_and_untar.sh $data $data_url train-clean-360
 
   # now add the "clean-360" subset to the mix ...
   local/data_prep.sh \
     $data/LibriSpeech/train-clean-360 data/train_clean_360
-  steps/make_mfcc.sh --cmd "$train_cmd" --nj 40 data/train_clean_360 \
+  steps/make_mfcc.sh --cmd "$train_cmd" --nj $nj data/train_clean_360 \
                      exp/make_mfcc/train_clean_360 $mfccdir
   steps/compute_cmvn_stats.sh \
     data/train_clean_360 exp/make_mfcc/train_clean_360 $mfccdir
@@ -294,7 +295,7 @@ fi
 
 if [ $stage -le 16 ]; then
   # align the new, combined set, using the tri4b model
-  steps/align_fmllr.sh --nj 40 --cmd "$train_cmd" \
+  steps/align_fmllr.sh --nj $nj --cmd "$train_cmd" \
                        data/train_clean_460 data/lang exp/tri4b exp/tri4b_ali_clean_460
 
   # create a larger SAT model, trained on the 460 hours of data.
@@ -329,12 +330,12 @@ fi
 
 if [ $stage -le 17 ]; then
   # prepare the remaining 500 hours of data
-  local/download_and_untar.sh $data $data_url train-other-500
+  #local/download_and_untar.sh $data $data_url train-other-500
 
   # prepare the 500 hour subset.
   local/data_prep.sh \
     $data/LibriSpeech/train-other-500 data/train_other_500
-  steps/make_mfcc.sh --cmd "$train_cmd" --nj 40 data/train_other_500 \
+  steps/make_mfcc.sh --cmd "$train_cmd" --nj $nj data/train_other_500 \
                      exp/make_mfcc/train_other_500 $mfccdir
   steps/compute_cmvn_stats.sh \
     data/train_other_500 exp/make_mfcc/train_other_500 $mfccdir
@@ -345,7 +346,7 @@ if [ $stage -le 17 ]; then
 fi
 
 if [ $stage -le 18 ]; then
-  steps/align_fmllr.sh --nj 40 --cmd "$train_cmd" \
+  steps/align_fmllr.sh --nj $nj --cmd "$train_cmd" \
                        data/train_960 data/lang exp/tri5b exp/tri5b_ali_960
 
   # train a SAT model on the 960 hour mixed data.  Use the train_quick.sh script
@@ -402,11 +403,11 @@ fi
 
 if [ $stage -le 20 ]; then
   # train and test nnet3 tdnn models on the entire data with data-cleaning.
-  local/chain/run_tdnn.sh # set "--stage 11" if you have already run local/nnet3/run_tdnn.sh
+  local/chain/run_tdnn.sh --stage 15 --train-stage 436 # set "--stage 11" if you have already run local/nnet3/run_tdnn.sh
 fi
 
 # The nnet3 TDNN recipe:
-# local/nnet3/run_tdnn.sh # set "--stage 11" if you have already run local/chain/run_tdnn.sh
+local/nnet3/run_tdnn.sh --stage 12 --train-stage 508 --reporting-email "brij.srivastava@inria.fr" # set "--stage 11" if you have already run local/chain/run_tdnn.sh
 
 # # train models on cleaned-up data
 # # we've found that this isn't helpful-- see the comments in local/run_data_cleaning.sh

@@ -32,7 +32,8 @@ sre16_trials=data/test_clean_trial/trials
 sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
 
-tag="_dar_s3_16k" # _sg400k_s3 = stargan strategy3, _vm1 = voicemask, _pwvc_s1 = GMM strategy1
+tag="_pwvc_s2" # _sg400k_s3 = stargan strategy3, _vm1 = voicemask, _pwvc_s1 = GMM strategy1
+attacker="weak"
 
 nnet_dir=exp/xvector_nnet_1a_460baseline_rm457 # CLEAN MODEL
 #nnet_dir=exp/xvector_nnet_1a_460baseline_rm457_sg400k_s3 # Stargan MODEL
@@ -49,8 +50,8 @@ train_plda=train_plda_460
 enroll_data=test_clean_enroll
 #trial_data=test_clean_trial_sg_s3
 
-score_file_adapt=data/${trial_data}/xvector_scores_adapt
-score_dist_plot=data/${trial_data}/xvector_score_dist.png
+score_file_adapt=data/${trial_data}/xvector_scores_adapt_${attacker}
+score_dist_plot=data/${trial_data}/xvector_score_dist_${attacker}.png
 
 stage=9
 if [ $stage -le -1 ]; then
@@ -61,7 +62,7 @@ if [ $stage -le -1 ]; then
 fi
 
 if [ $stage -le 0 ]; then
-
+  : '
   # format the data as Kaldi data directories
   #for part in dev-clean test-clean dev-other test-other train-clean-100 train-clean-360 train-other-500; do
   for part in train-clean-100 train-clean-360; do
@@ -72,9 +73,10 @@ if [ $stage -le 0 ]; then
   # Combine all training data into one
   utils/combine_data.sh data/${train_data} \
 	  data/train_clean_100${tag} data/train_clean_360${tag}
+  '
 
   # Make enrollment and trial data
-  python local/make_librispeech_eval.py ./proto $data/LibriSpeech${tag}/test-clean ${tag}
+  python local/make_librispeech_eval.py ./proto $data/LibriSpeech${tag}/test-clean "${tag}"
   utils/utt2spk_to_spk2utt.pl data/${enroll_data}/utt2spk > data/${enroll_data}/spk2utt
   utils/utt2spk_to_spk2utt.pl data/${trial_data}/utt2spk > data/${trial_data}/spk2utt
 fi
@@ -87,7 +89,7 @@ if [ $stage -le 1 ]; then
   #for name in train_460 test_clean_enroll test_clean_trial; do
   #for name in train_460_vm1; do
   for name in ${train_data} ${enroll_data} ${trial_data} ; do
-  #for name in ${enroll_data} ${trial_data} ; do
+  #for name in ${trial_data} ; do
     steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
       data/${name} exp/make_mfcc $mfccdir
     utils/fix_data_dir.sh data/${name}
@@ -96,6 +98,7 @@ if [ $stage -le 1 ]; then
     utils/fix_data_dir.sh data/${name}
   done
 fi
+
 
 nj=32
 

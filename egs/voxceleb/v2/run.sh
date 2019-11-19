@@ -17,34 +17,40 @@ vaddir=`pwd`/mfcc
 
 # The trials file is downloaded by local/make_voxceleb1_v2.pl.
 voxceleb1_trials=data/voxceleb1_test/trials
-voxceleb1_root=/export/corpora/VoxCeleb1
-voxceleb2_root=/export/corpora/VoxCeleb2
-nnet_dir=exp/xvector_nnet_1a
-musan_root=/export/corpora/JHU/musan
+#voxceleb1_root=/srv/storage/talc3@talc-data.nancy/multispeech/calcul/users/msahid/dataset/Voxceleb1
+voxceleb1_root=/srv/storage/talc3@talc-data.nancy/multispeech/calcul/users/msahid/VoxCeleb/voxceleb
+voxceleb2_root=/srv/storage/talc3@talc-data.nancy/multispeech/calcul/users/msahid/VoxCeleb/voxceleb2
+#nnet_dir=exp/xvector_nnet_1a # Trained by Brij
+nnet_dir=exp/0007_voxceleb_v2_1a/exp/xvector_nnet_1a_pretrained
+musan_root=/home/bsrivastava/asr_data/musan
 
-stage=0
+stage=12
 
 if [ $stage -le 0 ]; then
   local/make_voxceleb2.pl $voxceleb2_root dev data/voxceleb2_train
   local/make_voxceleb2.pl $voxceleb2_root test data/voxceleb2_test
-  # This script creates data/voxceleb1_test and data/voxceleb1_train for latest version of VoxCeleb1.
+  
+  #This script creates data/voxceleb1_test and data/voxceleb1_train for latest version of VoxCeleb1.
   # Our evaluation set is the test portion of VoxCeleb1.
-  local/make_voxceleb1_v2.pl $voxceleb1_root dev data/voxceleb1_train
-  local/make_voxceleb1_v2.pl $voxceleb1_root test data/voxceleb1_test
+  #local/make_voxceleb1_v2.pl $voxceleb1_root dev data/voxceleb1_train
+  #local/make_voxceleb1_v2.pl $voxceleb1_root test data/voxceleb1_test
+
   # if you downloaded the dataset soon after it was released, you will want to use the make_voxceleb1.pl script instead.
-  # local/make_voxceleb1.pl $voxceleb1_root data
+  local/make_voxceleb1.pl $voxceleb1_root data
   # We'll train on all of VoxCeleb2, plus the training portion of VoxCeleb1.
   # This should give 7,323 speakers and 1,276,888 utterances.
+  # This should give 7,325 speakers and 1,277,344 utterances.
   utils/combine_data.sh data/train data/voxceleb2_train data/voxceleb2_test data/voxceleb1_train
 fi
 
+nj=32
 if [ $stage -le 1 ]; then
   # Make MFCCs and compute the energy-based VAD for each dataset
   for name in train voxceleb1_test; do
-    steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj 40 --cmd "$train_cmd" \
+    steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
       data/${name} exp/make_mfcc $mfccdir
     utils/fix_data_dir.sh data/${name}
-    sid/compute_vad_decision.sh --nj 40 --cmd "$train_cmd" \
+    sid/compute_vad_decision.sh --nj $nj --cmd "$train_cmd" \
       data/${name} exp/make_vad $vaddir
     utils/fix_data_dir.sh data/${name}
   done
@@ -112,7 +118,7 @@ if [ $stage -le 3 ]; then
   # Make MFCCs for the augmented data.  Note that we do not compute a new
   # vad.scp file here.  Instead, we use the vad.scp from the clean version of
   # the list.
-  steps/make_mfcc.sh --mfcc-config conf/mfcc.conf --nj 40 --cmd "$train_cmd" \
+  steps/make_mfcc.sh --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
     data/train_aug_1m exp/make_mfcc $mfccdir
 
   # Combine the clean and augmented VoxCeleb2 list.  This is now roughly
@@ -125,7 +131,7 @@ if [ $stage -le 4 ]; then
   # This script applies CMVN and removes nonspeech frames.  Note that this is somewhat
   # wasteful, as it roughly doubles the amount of training data on disk.  After
   # creating training examples, this can be removed.
-  local/nnet3/xvector/prepare_feats_for_egs.sh --nj 40 --cmd "$train_cmd" \
+  local/nnet3/xvector/prepare_feats_for_egs.sh --nj $nj --cmd "$train_cmd" \
     data/train_combined data/train_combined_no_sil exp/train_combined_no_sil
   utils/fix_data_dir.sh data/train_combined_no_sil
 fi
@@ -162,12 +168,12 @@ local/nnet3/xvector/run_xvector.sh --stage $stage --train-stage -1 \
 
 if [ $stage -le 9 ]; then
   # Extract x-vectors for centering, LDA, and PLDA training.
-  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 4G" --nj 80 \
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 4G" --nj $nj \
     $nnet_dir data/train \
     $nnet_dir/xvectors_train
 
   # Extract x-vectors used in the evaluation.
-  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 4G" --nj 40 \
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 4G" --nj $nj \
     $nnet_dir data/voxceleb1_test \
     $nnet_dir/xvectors_voxceleb1_test
 fi
@@ -192,6 +198,12 @@ if [ $stage -le 10 ]; then
     $nnet_dir/xvectors_train/plda || exit 1;
 fi
 
+# WHEN PREPTRAINED MODEL IS USED
+# Extract x-vectors used in the evaluation.
+#sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 4G" --nj $nj \
+#  $nnet_dir data/voxceleb1_test \
+#  $nnet_dir/xvectors_voxceleb1_test
+
 if [ $stage -le 11 ]; then
   $train_cmd exp/scores/log/voxceleb1_test_scoring.log \
     ivector-plda-scoring --normalize-length=true \
@@ -205,9 +217,15 @@ if [ $stage -le 12 ]; then
   eer=`compute-eer <(local/prepare_for_eer.py $voxceleb1_trials exp/scores_voxceleb1_test) 2> /dev/null`
   mindcf1=`sid/compute_min_dcf.py --p-target 0.01 exp/scores_voxceleb1_test $voxceleb1_trials 2> /dev/null`
   mindcf2=`sid/compute_min_dcf.py --p-target 0.001 exp/scores_voxceleb1_test $voxceleb1_trials 2> /dev/null`
+  mindcf3=`sid/compute_min_dcf.py --p-target 0.0001 exp/scores_voxceleb1_test $voxceleb1_trials 2> /dev/null`
+  mindcf4=`sid/compute_min_dcf.py --p-target 0.00001 exp/scores_voxceleb1_test $voxceleb1_trials 2> /dev/null`
+  mindcf5=`sid/compute_min_dcf.py --p-target 0.025 exp/scores_voxceleb1_test $voxceleb1_trials 2> /dev/null`
   echo "EER: $eer%"
+  echo "minDCF(p-target=0.025): $mindcf5"
   echo "minDCF(p-target=0.01): $mindcf1"
   echo "minDCF(p-target=0.001): $mindcf2"
+  echo "minDCF(p-target=0.0001): $mindcf3"
+  echo "minDCF(p-target=0.00001): $mindcf4"
   # EER: 3.128%
   # minDCF(p-target=0.01): 0.3258
   # minDCF(p-target=0.001): 0.5003

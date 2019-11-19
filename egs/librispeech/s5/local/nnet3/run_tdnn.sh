@@ -60,6 +60,7 @@ for f in $train_data_dir/feats.scp $train_ivector_dir/ivector_online.scp \
 done
 
 if [ $stage -le 11 ]; then
+: '
   echo "$0: creating neural net configs";
 
   # create the config files for nnet initialization
@@ -71,6 +72,30 @@ if [ $stage -le 11 ]; then
     --splice-indexes "-2,-1,0,1,2 -1,2 -3,3 -7,2 0"  \
     --use-presoftmax-prior-scale true \
    $dir/configs || exit 1;
+ '
+  echo "$0: creating neural net configs using the xconfig parser";
+  num_targets=$(tree-info $ali_dir/tree | grep num-pdfs | awk '{print $2}')
+
+  mkdir -p $dir/configs
+  cat <<EOF > $dir/configs/network.xconfig
+  input dim=100 name=ivector
+  input dim=40 name=input
+
+  # please note that it is important to have input layer with the name=input
+  # as the layer immediately preceding the fixed-affine-layer to enable
+  # the use of short notation for the descriptor
+  fixed-affine-layer name=lda input=Append(-2,-1,0,1,2,ReplaceIndex(ivector, t, 0)) affine-transform-file=$dir/configs/lda.mat
+
+  # the first splicing is moved before the lda layer, so no splicing here
+  relu-renorm-layer name=tdnn1 dim=1280
+  relu-renorm-layer name=tdnn2 dim=1280 input=Append(-1,2)
+  relu-renorm-layer name=tdnn3 dim=1280 input=Append(-3,3)
+  relu-renorm-layer name=tdnn4 dim=1280 input=Append(-3,3)
+  relu-renorm-layer name=tdnn5 dim=1280 input=Append(-7,2)
+  relu-renorm-layer name=tdnn6 dim=1280
+  output-layer name=output dim=$num_targets max-change=1.5
+EOF
+  steps/nnet3/xconfig_to_configs.py --xconfig-file $dir/configs/network.xconfig --config-dir $dir/configs/
 fi
 
 
@@ -87,7 +112,7 @@ if [ $stage -le 12 ]; then
     --feat.cmvn-opts="--norm-means=false --norm-vars=false" \
     --trainer.num-epochs 4 \
     --trainer.optimization.num-jobs-initial 3 \
-    --trainer.optimization.num-jobs-final 16 \
+    --trainer.optimization.num-jobs-final 4 \
     --trainer.optimization.initial-effective-lrate 0.0017 \
     --trainer.optimization.final-effective-lrate 0.00017 \
     --egs.dir "$common_egs_dir" \
@@ -97,6 +122,7 @@ if [ $stage -le 12 ]; then
     --ali-dir $ali_dir \
     --lang data/lang \
     --reporting.email="$reporting_email" \
+    --use-gpu=wait \
     --dir=$dir  || exit 1;
 
 fi

@@ -35,10 +35,10 @@ fit_tgt = stats.norm.pdf(tgt_scores, np.mean(tgt_scores), np.std(tgt_scores))
 fit_nontgt = stats.norm.pdf(nontgt_scores, np.mean(nontgt_scores), np.std(nontgt_scores))
 
 plt.plot(tgt_scores, fit_tgt, '-g')
-plt.hist(tgt_scores, normed=True)
+plt.hist(tgt_scores, bins=20, normed=True)
 
 plt.plot(nontgt_scores, fit_nontgt, '-r')
-plt.hist(nontgt_scores, normed=True)
+plt.hist(nontgt_scores, bins=20, normed=True)
 
 plt.savefig(save_file, dpi=300)
 

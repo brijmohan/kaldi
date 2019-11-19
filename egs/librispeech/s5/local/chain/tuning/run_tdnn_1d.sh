@@ -287,7 +287,8 @@ if [ $stage -le 15 ]; then
     --feat-dir $train_data_dir \
     --tree-dir $tree_dir \
     --lat-dir $lat_dir \
-    --dir $dir  || exit 1;
+    --dir $dir \
+    --use-gpu=wait  || exit 1;
 
 fi
 
