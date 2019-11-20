@@ -67,9 +67,9 @@ for i, tf in enumerate(trial_files):
             trial_wav_scp.append(uttid + '\t flac -c -d -s ' + uttpath + ' | ')
             trial_utt2spk.append(uttid + '\t' + spkid)
             if i == 0:
-                trial_trials_male.append(spkid + '\t' + uttid + '\t' + target_type)
+                trial_trials_male.append(spkid + ' ' + uttid + ' ' + target_type)
             else:
-                trial_trials_female.append(spkid + '\t' + uttid + '\t' + target_type)
+                trial_trials_female.append(spkid + ' ' + uttid + ' ' + target_type)
 
 trial_wav_scp = sorted(trial_wav_scp)
 trial_utt2spk = sorted(trial_utt2spk)

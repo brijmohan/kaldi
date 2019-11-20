@@ -1,6 +1,6 @@
 #!/bin/bash
 
-OPENBLAS_VERSION=0.3.5
+OPENBLAS_VERSION=0.3.7
 
 WGET=${WGET:-wget}
 
@@ -10,7 +10,7 @@ if ! command -v gfortran 2>/dev/null; then
   echo "$0: gfortran is not installed.  Please install it, e.g. by:"
   echo " apt-get install gfortran"
   echo "(if on Debian or Ubuntu), or:"
-  echo " yum install fortran"
+  echo " yum install gcc-gfortran"
   echo "(if on RedHat/CentOS).  On a Mac, if brew is installed, it's:"
   echo " brew install gfortran"
   exit 1
@@ -32,4 +32,4 @@ fi
 tar xzf $tarball
 mv xianyi-OpenBLAS-* OpenBLAS
 
-make PREFIX=$(pwd)/OpenBLAS/install USE_THREAD=0 -C OpenBLAS all install
+make PREFIX=$(pwd)/OpenBLAS/install USE_LOCKING=1 USE_THREAD=0 -C OpenBLAS all install
