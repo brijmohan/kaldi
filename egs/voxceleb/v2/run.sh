@@ -21,10 +21,10 @@ voxceleb1_trials=data/voxceleb1_test/trials
 voxceleb1_root=/srv/storage/talc3@talc-data.nancy/multispeech/calcul/users/msahid/VoxCeleb/voxceleb
 voxceleb2_root=/srv/storage/talc3@talc-data.nancy/multispeech/calcul/users/msahid/VoxCeleb/voxceleb2
 #nnet_dir=exp/xvector_nnet_1a # Trained by Brij
-nnet_dir=exp/0007_voxceleb_v2_1a/exp/xvector_nnet_1a_pretrained
+nnet_dir=exp/0007_voxceleb_v2_1a/exp/xvector_nnet_1a # Pretrained model downloaded from Kaldi website
 musan_root=/home/bsrivastava/asr_data/musan
 
-stage=12
+stage=22
 
 if [ $stage -le 0 ]; then
   local/make_voxceleb2.pl $voxceleb2_root dev data/voxceleb2_train
@@ -235,3 +235,186 @@ if [ $stage -le 12 ]; then
   # minDCF(p-target=0.01): 0.4933
   # minDCF(p-target=0.001): 0.6168
 fi
+
+# Evaluating LibriSpeech trials using VoXceleb pretrained model 
+# without adaptation
+
+libri_enroll=test_clean_enroll
+libri_trials=test_clean_trial
+librispeech_trials_file=data/$libri_trials/trials
+libri_male=${librispeech_trials_file}_male
+libri_female=${librispeech_trials_file}_female
+
+nj=29
+if [ $stage -le 13 ]; then
+  echo "Evaluating LibriSpeech trials using pretrained VoXceleb model."
+
+  echo "Compute MFCC..."
+  for name in $libri_enroll $libri_trials; do
+    steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
+      data/${name} exp/make_mfcc $mfccdir
+    
+    utils/fix_data_dir.sh data/${name}
+    
+    sid/compute_vad_decision.sh --nj $nj --cmd "$train_cmd" \
+      data/${name} exp/make_vad $vaddir
+    utils/fix_data_dir.sh data/${name}
+  done
+
+fi
+
+if [ $stage -le 14 ]; then
+  echo "Extract xvectors..."
+  for name in $libri_enroll $libri_trials; do
+    sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 4G" --nj $nj \
+      $nnet_dir data/${name} \
+      $nnet_dir/xvectors_${name}
+  done
+fi
+
+if [ $stage -le 15 ]; then
+  echo "Scoring the trials..."
+  $train_cmd exp/scores/log/librispeech_trial_scoring.log \
+    ivector-plda-scoring --normalize-length=true \
+    --num-utts=ark:${nnet_dir}/xvectors_${libri_enroll}/num_utts.ark \
+    "ivector-copy-plda --smoothing=0.0 $nnet_dir/xvectors_train/plda - |" \
+    "ark:ivector-mean ark:data/${libri_enroll}/spk2utt scp:${nnet_dir}/xvectors_${libri_enroll}/xvector.scp ark:- | ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec ark:- ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "ark:ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec scp:$nnet_dir/xvectors_${libri_trials}/xvector.scp ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "cat '$librispeech_trials_file' | cut -d\  --fields=1,2 |" exp/scores_libri_trials || exit 1;
+
+  utils/filter_scp.pl $libri_male exp/scores_libri_trials > exp/scores_libri_male
+  utils/filter_scp.pl $libri_female exp/scores_libri_trials > exp/scores_libri_female
+  pooled_eer=$(paste $librispeech_trials_file exp/scores_libri_trials | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  male_eer=$(paste $libri_male exp/scores_libri_male | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  female_eer=$(paste $libri_female exp/scores_libri_female | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  echo "EER: Pooled ${pooled_eer}%, Male ${male_eer}%, Female ${female_eer}%"
+fi
+
+
+# Evaluating LibriSpeech trials using VoXceleb pretrained model 
+# WITH adaptation
+
+if [ $stage -le 16 ]; then
+  # Prepare adaptation data
+  echo "stage 16: extracting MFCC for adaptation data..."
+  for name in dev_clean dev_other; do
+    steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
+      data/${name} exp/make_mfcc $mfccdir
+    
+    utils/fix_data_dir.sh data/${name}
+    
+    sid/compute_vad_decision.sh --nj $nj --cmd "$train_cmd" \
+      data/${name} exp/make_vad $vaddir
+    utils/fix_data_dir.sh data/${name}
+  done
+fi
+
+if [ $stage -le 17 ]; then
+  echo "Extract xvectors for adaptation data..."
+  for name in dev_clean dev_other; do
+    sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 4G" --nj $nj \
+      $nnet_dir data/${name} \
+      $nnet_dir/xvectors_${name}
+  done
+fi
+
+# DEV_CLEAN ADAPTATION
+if [ $stage -le 18 ]; then
+  # Here we adapt the out-of-domain VoxCeleb PLDA model to LibriSpeech dev_clean.  In the future, we will include a clustering
+  # based approach for domain adaptation, which tends to work better.
+  echo "Adapting the VoxCeleb model to dev_clean..."
+  $train_cmd $nnet_dir/xvectors_dev_clean/log/plda_adapt.log \
+    ivector-adapt-plda --within-covar-scale=0.75 --between-covar-scale=0.25 \
+    $nnet_dir/xvectors_train/plda \
+    "ark:ivector-subtract-global-mean scp:${nnet_dir}/xvectors_dev_clean/xvector.scp ark:- | transform-vec ${nnet_dir}/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    ${nnet_dir}/xvectors_dev_clean/plda_adapt || exit 1;
+fi
+
+if [ $stage -le 19 ]; then
+  echo "Scoring the trials with dev_clean adapted VoxCeleb model..."
+  $train_cmd exp/scores/log/librispeech_dev_clean_adapt.log \
+    ivector-plda-scoring --normalize-length=true \
+    --num-utts=ark:${nnet_dir}/xvectors_${libri_enroll}/num_utts.ark \
+    "ivector-copy-plda --smoothing=0.0 $nnet_dir/xvectors_dev_clean/plda_adapt - |" \
+    "ark:ivector-mean ark:data/${libri_enroll}/spk2utt scp:${nnet_dir}/xvectors_${libri_enroll}/xvector.scp ark:- | ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec ark:- ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "ark:ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec scp:$nnet_dir/xvectors_${libri_trials}/xvector.scp ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "cat '$librispeech_trials_file' | cut -d\  --fields=1,2 |" exp/scores/libri_dev_clean_adapt || exit 1;
+
+  utils/filter_scp.pl $libri_male exp/scores/libri_dev_clean_adapt > exp/scores/libri_dev_clean_male
+  utils/filter_scp.pl $libri_female exp/scores/libri_dev_clean_adapt > exp/scores/libri_dev_clean_female
+  pooled_eer=$(paste $librispeech_trials_file exp/scores/libri_dev_clean_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  male_eer=$(paste $libri_male exp/scores/libri_dev_clean_male | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  female_eer=$(paste $libri_female exp/scores/libri_dev_clean_female | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  echo "EER: Pooled ${pooled_eer}%, Male ${male_eer}%, Female ${female_eer}%"
+fi
+
+# DEV_OTHER ADAPTATION
+if [ $stage -le 20 ]; then
+  # Here we adapt the out-of-domain VoxCeleb PLDA model to LibriSpeech dev_other.  In the future, we will include a clustering
+  # based approach for domain adaptation, which tends to work better.
+  echo "Adapting the VoxCeleb model to dev_other..."
+  $train_cmd $nnet_dir/xvectors_dev_other/log/plda_adapt.log \
+    ivector-adapt-plda --within-covar-scale=0.75 --between-covar-scale=0.25 \
+    $nnet_dir/xvectors_train/plda \
+    "ark:ivector-subtract-global-mean scp:${nnet_dir}/xvectors_dev_other/xvector.scp ark:- | transform-vec ${nnet_dir}/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    ${nnet_dir}/xvectors_dev_other/plda_adapt || exit 1;
+fi
+
+if [ $stage -le 21 ]; then
+  echo "Scoring the trials with dev_other adapted VoxCeleb model..."
+  $train_cmd exp/scores/log/librispeech_dev_other_adapt.log \
+    ivector-plda-scoring --normalize-length=true \
+    --num-utts=ark:${nnet_dir}/xvectors_${libri_enroll}/num_utts.ark \
+    "ivector-copy-plda --smoothing=0.0 $nnet_dir/xvectors_dev_other/plda_adapt - |" \
+    "ark:ivector-mean ark:data/${libri_enroll}/spk2utt scp:${nnet_dir}/xvectors_${libri_enroll}/xvector.scp ark:- | ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec ark:- ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "ark:ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec scp:$nnet_dir/xvectors_${libri_trials}/xvector.scp ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "cat '$librispeech_trials_file' | cut -d\  --fields=1,2 |" exp/scores/libri_dev_other_adapt || exit 1;
+
+  utils/filter_scp.pl $libri_male exp/scores/libri_dev_other_adapt > exp/scores/libri_dev_other_male
+  utils/filter_scp.pl $libri_female exp/scores/libri_dev_other_adapt > exp/scores/libri_dev_other_female
+  pooled_eer=$(paste $librispeech_trials_file exp/scores/libri_dev_other_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  male_eer=$(paste $libri_male exp/scores/libri_dev_other_male | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  female_eer=$(paste $libri_female exp/scores/libri_dev_other_female | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  echo "EER: Pooled ${pooled_eer}%, Male ${male_eer}%, Female ${female_eer}%"
+fi
+
+# ADAPTATION with combined dev data
+if [ $stage -le 22 ]; then
+  utils/combine_data.sh data/dev_combined data/dev_clean data/dev_other
+  utils/validate_data_dir.sh data/dev_combined
+  utils/fix_data_dir.sh data/dev_combined
+
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 4G" --nj $nj \
+    $nnet_dir data/dev_combined \
+    $nnet_dir/xvectors_dev_combined
+fi
+
+if [ $stage -le 23 ]; then
+  # Here we adapt the out-of-domain VoxCeleb PLDA model to LibriSpeech dev_combined.  In the future, we will include a clustering
+  # based approach for domain adaptation, which tends to work better.
+  echo "Adapting the VoxCeleb model to dev_combined..."
+  $train_cmd $nnet_dir/xvectors_dev_combined/log/plda_adapt.log \
+    ivector-adapt-plda --within-covar-scale=0.75 --between-covar-scale=0.25 \
+    $nnet_dir/xvectors_train/plda \
+    "ark:ivector-subtract-global-mean scp:${nnet_dir}/xvectors_dev_combined/xvector.scp ark:- | transform-vec ${nnet_dir}/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    ${nnet_dir}/xvectors_dev_combined/plda_adapt || exit 1;
+fi
+
+if [ $stage -le 24 ]; then
+  echo "Scoring the trials with dev_combined adapted VoxCeleb model..."
+  $train_cmd exp/scores/log/librispeech_dev_combined_adapt.log \
+    ivector-plda-scoring --normalize-length=true \
+    --num-utts=ark:${nnet_dir}/xvectors_${libri_enroll}/num_utts.ark \
+    "ivector-copy-plda --smoothing=0.0 $nnet_dir/xvectors_dev_combined/plda_adapt - |" \
+    "ark:ivector-mean ark:data/${libri_enroll}/spk2utt scp:${nnet_dir}/xvectors_${libri_enroll}/xvector.scp ark:- | ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec ark:- ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "ark:ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec scp:$nnet_dir/xvectors_${libri_trials}/xvector.scp ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "cat '$librispeech_trials_file' | cut -d\  --fields=1,2 |" exp/scores/libri_dev_combined_adapt || exit 1;
+
+  utils/filter_scp.pl $libri_male exp/scores/libri_dev_combined_adapt > exp/scores/libri_dev_combined_male
+  utils/filter_scp.pl $libri_female exp/scores/libri_dev_combined_adapt > exp/scores/libri_dev_combined_female
+  pooled_eer=$(paste $librispeech_trials_file exp/scores/libri_dev_combined_adapt | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  male_eer=$(paste $libri_male exp/scores/libri_dev_combined_male | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  female_eer=$(paste $libri_female exp/scores/libri_dev_combined_female | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  echo "EER: Pooled ${pooled_eer}%, Male ${male_eer}%, Female ${female_eer}%"
+fi
+
