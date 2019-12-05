@@ -19,31 +19,32 @@ set -e
 mfccdir=`pwd`/mfcc
 vaddir=`pwd`/mfcc
 
-data=/home/bsrivastava/asr_data
+data=/home/bsrivast/asr_data
 
 # SRE16 trials
 sre16_trials=data/test_clean_trial/trials
 sre16_trials_tgl=data/test_clean_trial/trials_male
 sre16_trials_yue=data/test_clean_trial/trials_female
 
-tag="_dar_s2_16k" # vm1 = voicemask
+tag="_dar_s3_16k" # vm1 = voicemask
 train_data=train_460${tag}
 train_plda=train_plda_460${tag}
 enroll_data=test_clean_enroll${tag}
 trial_data=test_clean_trial${tag}
-train_data=train_460
-train_plda=train_plda_460
-enroll_data=test_clean_enroll
+#train_data=train_460
+#train_plda=train_plda_460
+#enroll_data=test_clean_enroll
 #trial_data=test_clean_trial
 
-#ivector_extractor=exp/extractor${tag}
-ivector_extractor=exp/extractor # Baseline model
+ivector_extractor=exp/extractor${tag}
+#ivector_extractor=exp/extractor # Baseline model
 
 score_file=data/${trial_data}/scores
 score_file_adapt=data/${trial_data}/scores_adapt
 score_dist=data/${trial_data}/ivector_dist.png
 
-stage=6
+stage=5
+
 if [ $stage -le -1 ]; then
   # Sync VC transformed folders
   rsync -avzm --ignore-existing  $data/LibriSpeech/train-clean-360/* $data/LibriSpeech${tag}/train-clean-360/
@@ -70,7 +71,7 @@ if [ $stage -le 0 ]; then
   utils/utt2spk_to_spk2utt.pl data/${trial_data}/utt2spk > data/${trial_data}/spk2utt
 fi
 
-nj=32
+nj=40
 if [ $stage -le 1 ]; then
   # Make MFCCs and compute the energy-based VAD for each dataset
   #for name in dev_clean test_clean dev_other test_other train_960 test_clean_enroll test_clean_trial; do
@@ -187,7 +188,7 @@ if [ $stage -le 4 ]; then
   utils/fix_data_dir.sh data/${train_plda}
 fi
 
-nj=29
+nj=10
 if [ $stage -le 5 ]; then
   # Extract i-vectors for SRE data (includes Mixer 6). We'll use this for
   # things like LDA or PLDA.
