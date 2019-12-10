@@ -107,10 +107,12 @@ else
   gpu_queue_opts=
   gpu_opt="--use-gpu=no"
 fi
-frame_subsampling_factor=$(cat $model_dir/frame_subsampling_factor)
+#frame_subsampling_factor=$(cat $model_dir/frame_subsampling_factor)
+frame_subsampling_factor=1
 
 mkdir -p $dir/log
 cp $model_dir/frame_subsampling_factor $dir/
+echo "1" >  $dir/frame_subsampling_factor
 
 if [ $stage -le 0 ]; then
   if [ ! -f $dir/tacc ] || [ $dir/tacc -ot $tree_dir/ali.1.gz ]; then
