@@ -9,12 +9,14 @@
 
 set -e
 
-# begin config
+#===== begin config =======
 nj=40
 stage=0
 
 # Original data in ./data folder which will be splitted into train, dev and test based on speakers
 train_data=libritts_train_clean_100 # change this to your actual data
+anoni_pool="libritts_train_other_500" # change this to the data you want to use for anonymization pool, there can be multiple datasets spearated by space
+data_anon= # Data to be anonymized, must be in Kaldi format
 
 # Chain model for PPG extraction
 ivec_extractor=exp/nnet3_cleaned/extractor # change this to the ivector extractor trained by chain models
@@ -43,11 +45,13 @@ test_split=${train_data}_test
 split_data="${train_split} ${dev_split} ${test_split}"
 xvec_nnet_dir=exp/0007_voxceleb_v2_1a/exp/xvector_nnet_1a # change this to pretrained xvector model downloaded from Kaldi website
 xvec_out_dir=${xvec_nnet_dir}/am_nsf
+plda_dir=${xvec_nnet_dir}/xvectors_train
 
 # Output directories for netcdf data that will be used by AM & NSF training
 train_out=/media/data/am_nsf_data/libritts/train_100 # change this to the dir where train, dev data and scp files will be stored
 test_out=/media/data/am_nsf_data/libritts/test # change this to dir where test data will be stored
-# end config
+
+#=========== end config ===========
 
 # Download pretrained models
 if [ $stage -le -1 ]; then
@@ -72,20 +76,24 @@ fi
 if [ $stage -le 2 ]; then
   echo "Stage 2: Splitting the data into train, dev and test based on speakers."
   local/featex/00_make_am_nsf_data.sh --dev-spks ${dev_spks} --test-spks ${test_spks} \
-	  data/${train_data}  ${split_dir}
+	  data/${train_data} ${split_dir}
 fi
 
 # Extract xvectors from each split of data
 if [ $stage -le 3 ]; then
   echo "Stage 3: x-vector extraction."
-  local/featex/01_extract_am_nsf_xvectors.sh --nj $nj ${split_dir} ${split_data} ${xvec_nnet_dir} \
+  for sdata in ${split_data}; do
+    local/featex/01_extract_am_nsf_xvectors.sh --nj $nj ${split_dir}/${sdata} ${xvec_nnet_dir} \
 	  ${xvec_out_dir}
+  done
 fi
 
 # Extract pitch from each split of data
 if [ $stage -le 4 ]; then
   echo "Stage 4: Pitch extraction."
-  local/featex/02_extract_am_nsf_pitch.sh --nj $nj ${split_dir} ${split_data}
+  for sdata in ${split_data}; do
+    local/featex/02_extract_am_nsf_pitch.sh --nj ${dev_spks} ${split_dir}/${sdata}
+  done
 fi
 
 # Create NetCDF data from each split
@@ -93,5 +101,26 @@ if [ $stage -le 5 ]; then
   echo "Stage 5: Making netcdf data for AM & NSF training."
   local/featex/03_make_netcdf_data.sh ${train_split} ${dev_split} ${test_split} \
 	  ${ppg_file} ${melspec_file} ${xvec_out_dir} ${train_out} ${test_out}
+fi
+
+# Extract xvectors from anonymization pool
+if [ $stage -le 6 ]; then
+  echo "Stage 6: Extracting xvectors for anonymization pool."
+  local/featex/01_extract_am_nsf_xvectors.sh --nj $nj data/${anoni_pool} ${xvec_nnet_dir} \
+	  ${xvec_out_dir}
+fi
+
+# Extract xvectors from data which has to be anonymized
+if [ $stage -le 7 ]; then
+  echo "Stage 7: Extracting xvectors for source data."
+  local/featex/01_extract_am_nsf_xvectors.sh --nj $nj data/${data_anon} ${xvec_nnet_dir} \
+	  ${xvec_out_dir}
+fi
+
+# Generate pseudo-speakers for source data
+if [ $stage -le 8 ]; then
+  echo "Stage 8: Generating pseudo-speakers for source data."
+  local/anon/make_pseudospeaker.sh data/${data_anon} data/${anoni_pool} ${xvec_out_dir} \
+	  ${plda_dir}
 fi
 
