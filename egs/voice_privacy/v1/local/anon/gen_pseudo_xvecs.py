@@ -14,16 +14,40 @@ pseudo_xvecs_dir = args[5]
 rand_level = args[6]
 cross_gender = args[7] == "true"
 
+
+# Core logic of anonymization by randomization
+def select_random_xvec(top500, pool_xvectors):
+    # number of random xvectors to select out of pool
+    NR = 100
+    random100mask = np.random.random_integers(0, 499, NR)
+    pseudo_spk_list = [x for i, x in enumerate(top500) if i in
+                           random100mask]
+    pseudo_spk_matrix = np.zeros((NR, 512), dtype='float64')
+    for i, spk_aff in enumerate(pseudo_spk_list):
+        pseudo_spk_matrix[i, :] = pool_xvectors[spk_aff[0]]
+    # Take mean of 100 randomly selected xvectors
+    pseudo_xvec = np.mean(pseudo_spk_matrix, axis=1)
+    return pseudo_xvec
+
+
 gender_rev = {'m': 'f', 'f': 'm'}
 src_spk2gender_file = join(src_data, 'spk2gender')
+src_spk2utt_file = join(src_data, 'spk2utt')
 pool_spk2gender_file = join(pool_data, 'spk2gender')
 
 src_spk2gender = {}
+src_spk2utt = {}
 pool_spk2gender = {}
+# Read source spk2gender and spk2utt
 with open(src_spk2gender_file) as f:
     for line in f.read().splitlines():
         sp = line.split()
         src_spk2gender[sp[0]] = sp[1]
+with open(src_spk2utt_file) as f:
+    for line in f.read().splitlines():
+        sp = line.split()
+        src_spk2utt[sp[0]] = sp[1:]
+# Read pool spk2gender
 with open(pool_spk2gender_file) as f:
     for line in f.read().splitlines():
         sp = line.split()
@@ -61,18 +85,38 @@ for spk, gender in src_spk2gender.items():
     # Select 500 least affinity speakers and then randomly select 100 out of
     # them
     top500_spk = sorted_aff[:500]
-    random100mask = np.random.random_integers(0, 499, 100)
-    pseudo_spk_list = [x for i, x in enumerate(top500_spk) if i in
-                       random100mask]
-    pseudo_spk_matrix = np.zeros((100, 512), dtype='float')
-    for i, spk_aff in enumerate(pseudo_spk_list):
-        pseudo_spk_matrix[i, :] = pool_xvectors[spk_aff[0]]
-    # Take mean of 100 randomly selected xvectors
-    pseudo_xvec = np.mean(pseudo_spk_matrix, axis=1)
-    # Assign it to the current speaker
-    pseudo_spk_map[spk] = pseudo_xvec
+    if rand_level == 'spk':
+        # For rand_level = spk, one xvector is assigned to all the utterances
+        # of a speaker
+        pseudo_xvec = select_random_xvec(top500_spk, pool_xvectors)
+        # Assign it to all utterances of the current speaker
+        for uttid in src_spk2utt[spk]:
+            pseudo_xvec_map[uttid] = pseudo_xvec
+    elif rand_level == 'utt':
+        # For rand_level = utt, random xvector is assigned to all the utterances
+        # of a speaker
+        for uttid in src_spk2utt[spk]:
+            # Compute random vector for every utt
+            pseudo_xvec = select_random_xvec(top500_spk, pool_xvectors)
+            # Assign it to all utterances of the current speaker
+            pseudo_xvec_map[uttid] = pseudo_xvec
+    else:
+        print("rand_level not supported! Errors will happen!")
 
 
+# Write features as ark,scp
+print("Writing pseud-speaker xvectors to: "+pseudo_xvecs_dir)
+import kaldi_io
+ark_scp_output='ark:| copy-feats --compress=true ark:- ark,scp:{}/{}.ark,{}/{}.scp'.format(
+                    pseudo_xvecs_dir, 'pseudo_xvector',
+                    pseudo_xvecs_dir, 'pseudo_xvector')
+with kaldi_io.open_or_fd(ark_scp_output,'wb') as f:
+      for uttid, xvec in pseudo_xvec_map.items():
+          kaldi_io.write_mat(f, xvec, key=uttid)
 
+print("Writing pseudo-speaker spk2gender.")
+with open(join(pseudo_xvecs_dir, 'spk2gender'), 'w') as f:
+    for spk, gender in pseudo_gender_map.items():
+        f.write(spk + ' ' + gender + '\n')
 
 

@@ -7,11 +7,10 @@ import numpy as np
 
 args = sys.argv
 data_dir = args[1]
-xvec_out_dir = args[2]
+xvector_file = args[2]
 out_dir = args[3]
 
 dataname = basename(data_dir)
-xvector_file = join(xvec_out_dir, "xvectors_"+dataname, "xvector.scp")
 xvec_out_dir = join(out_dir, "xvector")
 pitch_out_dir = join(out_dir, "f0")
 
@@ -31,3 +30,5 @@ with open(xvector_file) as f:
         mat = mat[np.newaxis]
         xvec = np.repeat(mat, plen, axis=0)
         readwrite.write_raw_mat(xvec, join(xvec_out_dir, key+'.xvector'))
+
+

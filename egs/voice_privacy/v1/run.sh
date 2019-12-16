@@ -13,10 +13,13 @@ set -e
 nj=40
 stage=0
 
+librispeech_corpus=/home/bsrivast/asr_data/LibriSpeech
+
 # Original data in ./data folder which will be splitted into train, dev and test based on speakers
 am_nsf_train_data=libritts_train_clean_100 # change this to your actual data
 anoni_pool="libritts_train_other_500" # change this to the data you want to use for anonymization pool
 data_src= # Data to be anonymized, must be in Kaldi format
+data_src_netcdf=/media/data/am_nsf_data/${data_src} # change this to dir where test data will be stored
 
 # Chain model for PPG extraction
 ivec_extractor=exp/nnet3_cleaned/extractor # change this to the ivector extractor trained by chain models
@@ -117,6 +120,27 @@ if [ $stage -le 6 ]; then
 	  ${anon_xvec_out_dir}
 fi
 
+eval1_enroll=eval1_enroll
+eval1_trial=eval1_trial
+eval2_enroll=eval2_enroll
+eval2_trial=eval2_trial
+
+# Make evaluation data
+if [ $stage -le 7 ]; then
+  echo "Stage 7: Making evaluation data"
+  python local/make_librispeech_eval.py ./proto/eval1 ${librispeech_corpus}/test-clean "" || exit 1;
+  python local/make_librispeech_eval2.py proto/eval2 ${librispeech_corpus} "" || exit 1;
+
+  for name in $eval1_enroll $eval1_trials $eval2_enroll $eval2_trial; do
+    for f in `ls data/${name}`; do
+      mv data/${name}/$f data/${name}/${f}.u
+      sort -u data/${name}/${f}.u > data/${name}/$f
+      rm data/${name}/${f}.u
+    done
+    utils/utt2spk_to_spk2utt.pl data/${name}/utt2spk > data/${name}/spk2utt
+  done
+fi
+
 # Extract xvectors from data which has to be anonymized
 if [ $stage -le 7 ]; then
   echo "Stage 7: Extracting xvectors for source data."
@@ -124,25 +148,34 @@ if [ $stage -le 7 ]; then
 	  ${anon_xvec_out_dir}
 fi
 
-# Generate pseudo-speakers for source data
+# Extract pitch for source data
 if [ $stage -le 8 ]; then
-  echo "Stage 8: Generating pseudo-speakers for source data."
+  echo "Stage 8: Pitch extraction for source data."
+  local/featex/02_extract_pitch.sh --nj ${nj} data/${data_anon}
+fi
+
+# Extract PPGs for source data
+if [ $stage -le 9 ]; then
+  echo "Stage 9: PPG extraction for source data."
+  local/featex/extract_ppg.sh --nj $nj --stage 0 data/${data_anon} \
+	  ${ivec_extractor} ${ivec_data_dir}/ivectors_${data_anon} \
+	  ${tree_dir} ${model_dir} ${lang_dir} ${ppg_dir}/ppg_${data_anon}
+fi
+
+# Generate pseudo-speakers for source data
+if [ $stage -le 10 ]; then
+  echo "Stage 10: Generating pseudo-speakers for source data."
   local/anon/make_pseudospeaker.sh --rand-level ${pseudo_xvec_rand_level} \
       --cross-gender ${cross_gender} \
 	  data/${data_anon} data/${anoni_pool} ${anon_xvec_out_dir} \
 	  ${plda_dir}
 fi
 
-# Extract pitch for source data
-if [ $stage -le 9 ]; then
-  echo "Stage 4: Pitch extraction for source data."
-  local/featex/02_extract_pitch.sh --nj ${nj} data/${data_anon}
-fi
 
-# Extract PPGs for source data
-if [ $stage -le 10 ]; then
-  echo "Stage 0: PPG extraction."
-  local/featex/extract_ppg.sh --nj $nj --stage 0 data/${data_anon} \
-	  ${ivec_extractor} ${ivec_data_dir}/ivectors_${data_anon} \
-	  ${tree_dir} ${model_dir} ${lang_dir} ${ppg_dir}/ppg_${data_anon}
+# Create netcdf data for voice conversion
+if [ $stage -le 11 ]; then
+  echo "Stage 11: Make netcdf data for VC."
+  local/anon/make_netcdf.sh --stage 0 data/${data_anon} ${ppg_dir}/ppg_${data_anon}/phone_post.scp \
+	  ${anon_xvec_out_dir}/xvectors_${data_anon}/pseudo_xvecs/pseudo_xvector.scp \
+	  ${data_src_netcdf}
 fi
