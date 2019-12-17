@@ -7,7 +7,7 @@ nj=20
 
 . utils/parse_options.sh
 
-if [ $# != 2 ]; then
+if [ $# != 1 ]; then
   echo "Usage: "
   echo "  $0 [options] <data-dir>"
   echo "Options"

@@ -11,21 +11,23 @@
 . ./cmd.sh
 . ./path.sh
 set -e
+
 mfccdir=`pwd`/mfcc
 vaddir=`pwd`/mfcc
 
 nnet_dir=exp/0007_voxceleb_v2_1a/exp/xvector_nnet_1a # Pretrained model downloaded from Kaldi website
 
-stage=4
+stage=1
 
-libri_enroll=dev_clean_enroll
-libri_trials=dev_clean_trial
+libri_enroll=$1
+libri_trials=$2
 librispeech_trials_file=data/$libri_trials/trials
 libri_male=${librispeech_trials_file}_male
 libri_female=${librispeech_trials_file}_female
 
 
 if [ $stage -le 0 ]; then
+  echo "Stage 0: Making data for dev_clean evaluation set"
   python local/make_librispeech_eval2.py proto/ASV_VoicePrivacy_v0 /home/bsrivast/asr_data/LibriSpeech || exit 1;
   for name in $libri_enroll $libri_trials; do
     for f in `ls data/${name}`; do
@@ -84,6 +86,8 @@ if [ $stage -le 3 ]; then
   female_eer=$(paste $libri_female exp/scores_libri_female | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
   echo "EER: Pooled ${pooled_eer}%, Male ${male_eer}%, Female ${female_eer}%"
 fi
+
+exit 0;
 
 # Evaluating LibriSpeech trials using VoXceleb pretrained model 
 # WITH adaptation

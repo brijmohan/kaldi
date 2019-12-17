@@ -46,7 +46,7 @@ if [ $stage -le 0 ]; then
 fi
 
 if [ $stage -le 1 ]; then
-  steps/nnet3/chain/get_phone_post.sh --cmd "$decode_cmd" --nj $nj \
+  steps/nnet3/chain/get_phone_post.sh --cmd "$train_cmd" --nj $nj \
        	--remove-word-position-dependency false --online-ivector-dir ${ivec_data_dir} \
 	${tree_dir} ${model_dir} ${lang_dir} ${data_dir} ${ppg_dir}
 fi

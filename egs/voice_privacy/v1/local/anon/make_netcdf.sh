@@ -7,7 +7,7 @@ stage=0
 
 . utils/parse_options.sh
 
-if [ $# != 5 ]; then
+if [ $# != 4 ]; then
   echo "Usage: "
   echo "  $0 [options] <train-dir> <ppg-file> <xvec-out-dir> <data-out-dir>"
   echo "Options"
@@ -30,6 +30,8 @@ if [ $stage -le 0 ]; then
   cut -f 1 -d' ' ${src_data}/utt2spk > ${out_dir}/scp/data.lst || exit 1;
 fi
 
+# initialize pytools
+. local/vc/am/init.sh
 
 if [ $stage -le 1 ]; then
   python local/featex/create_ppg_data.py ${ppg_file} ${out_dir} || exit 1;

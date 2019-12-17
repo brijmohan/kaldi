@@ -2,10 +2,11 @@
 . path.sh
 . cmd.sh
 
-. utils/parse_options.sh
-
 rand_level="spk"
 cross_gender="false"
+stage=0
+
+. utils/parse_options.sh
 
 if [ $# != 4 ]; then
   echo "Usage: "
@@ -35,13 +36,20 @@ mkdir -p ${affinity_scores_dir} ${pseudo_xvecs_dir}
 # affinity distribution over anonymization pool
 src_spk2gender=${src_data}/spk2gender
 pool_spk2gender=${pool_data}/spk2gender
-cut -d\  -f 1 ${src_spk2gender} | while read s; do
-  local/anon/compute_spk_pool_affinity.sh ${plda_dir} ${src_xvec_dir} ${pool_xvec_dir} \
-	   "$s" "${affinity_scores_dir}/affinity_${s}"
-done
 
+if [ $stage -le 0 ]; then
+  echo "Computing affinity scores of each source speaker to each pool speaker."
+  cut -d\  -f 1 ${src_spk2gender} | while read s; do
+    #echo "Speaker: $s"
+    local/anon/compute_spk_pool_affinity.sh ${plda_dir} ${src_xvec_dir} ${pool_xvec_dir} \
+	   "$s" "${affinity_scores_dir}/affinity_${s}" || exit 1;
+  done
+fi
+
+if [ $stage -le 1 ]; then
 # Filter the scores based on gender and then sort them based on affinity. 
 # Select the xvectors of 100 farthest speakers and average them to get pseudospeaker.
-python local/anon/gen_pseudo_xvecs.py ${src_data} ${pool_data} ${affinity_scores_dir} \ 
-	${xvec_out_dir} ${pseudo_xvecs_dir} ${rand_level} ${cross_gender}
+  python local/anon/gen_pseudo_xvecs.py ${src_data} ${pool_data} ${affinity_scores_dir} \
+	  ${xvec_out_dir} ${pseudo_xvecs_dir} ${rand_level} ${cross_gender} || exit 1;
+fi
 
