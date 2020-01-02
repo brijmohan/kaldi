@@ -35,9 +35,46 @@ This is a chain ASR model trained using 600 hours (train-clean-100 and train-oth
 
 ### x-vector extractor
 
+This is a pretrained xvector model trained over VoxCeleb 1 & 2, it can easily downloaded using the following [link](http://kaldi-asr.org/models/7/0007_voxceleb_v2_1a.tar.gz). It should be extracted in the `exp` directory of this recipe.
+
 - `xvec_nnet_dir`: Directory where trained xvector network is stored
 - `pseudo_xvec_rand_level`: anonymized x-vectors will be produced at this level, e.g. `spk` or `utt`
-- `cross_gender`: should anonymization be done within same gender or across gender.
+- `cross_gender`: should anonymization be done within same gender or across gender, e.g. `true` or `false`.
 
 
+## External modules for voice converison
+
+For voice conversion we utilize the Neural source-filter model provided by NII, Japan. You must clone and install it at your desired location. These locations will be needed to configure the recipe.
+
+### Installation
+
+NII provides two repositories:
+- [CURRENNT base code](https://github.com/nii-yamagishilab/project-CURRENNT-public)
+- [AM and NSF scripts](https://github.com/nii-yamagishilab/project-CURRENNT-scripts)
+
+Install these two based on the instructions at their respective github READMEs. After installation follow below instructions for configuring the recipe.
+
+### Acoustic model for voice conversion
+
+This module will take 3 inputs: 
+- PPGs
+- x-vectors
+- F0
+
+The pretrained model will be provided as part of this baseline. It has been trained over 100 hour subset (train-clean-100) of LibriTTS dataset. Following configs are needed:
+
+  1. Open `local/vc/am/init.sh` and change the variables `TEMP_CURRENNT_PROJECT_PYTOOLS_PATH` and `TEMP_CURRENNT_PROJECT_CURRENNT_PATH` to appropriate paths based on above installation.
+  2. Open `local/vc/am/01_gen.sh` and change `proj_dir` to the directory where `project-DAR-continuous` is present in your installation. Possibly also change `TEMP_ACOUSTIC_MODEL_DIRECTORY` here to the place where your pretrained AM is stored. This directory must contain `trained_network.jsn` which will have parameters for your pretrained acoustic model. This model will be provided during the challenge.
+
+### Neural source-filter model for voice conversion
+
+This module will take 3 inputs: 
+- Mel filterbanks extracted by AM
+- x-vectors
+- F0
+
+The pretrained model will be provided as part of this baseline. It has been trained over 100 hour subset (train-clean-100) of LibriTTS dataset. Following configs are needed:
+
+  1. Open `local/vc/nsf/init.sh` and change the variables `TEMP_CURRENNT_PROJECT_PYTOOLS_PATH` and `TEMP_CURRENNT_PROJECT_CURRENNT_PATH` to appropriate paths based on above installation.
+  2. Open `local/vc/nsf/01_gen.sh` and change `proj_dir` to the directory where `project-NSF` is present in your installation. Possibly also change `TEMP_WAVEFORM_MODEL_DIRECTORY` and `TEMP_WAVEFORM_MODEL_NETWORK_PATH` here to the place where your pretrained NSF is stored. Note that `TEMP_WAVEFORM_MODEL_NETWORK_PATH` is a `.jsn` file which will have parameters for your pretrained NSF model. This model will be provided during the challenge.
 
