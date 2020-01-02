@@ -127,12 +127,13 @@ if [ -f $data/segments ]; then
   # THIS section needs to be fixed like the else branch
   # pitch feats must be re-written
   #
-  pitch_feats="ark,s,cs:extract-segments scp,p:$scp $logdir/segments.JOB ark:- | \
-    compute-kaldi-pitch-feats --verbose=2 --config=$pitch_config ark:- ark:- | \
-    process-kaldi-pitch-feats $postprocess_config_opt ark:- ark:- |"
+  #pitch_feats="ark,s,cs:extract-segments scp,p:$scp $logdir/segments.JOB ark:- | \
+  #  compute-kaldi-pitch-feats --verbose=2 --config=$pitch_config ark:- ark:- |"
 
   $cmd JOB=1:$nj $logdir/make_pitch_${name}.JOB.log \
-    copy-feats --compress=$compress $write_num_frames_opt ${pitch_feats} \
+    extract-segments scp,p:$scp $logdir/segments.JOB ark:- \| \
+    compute-kaldi-pitch-feats --verbose=2 --config=$pitch_config ark:- ark:- \| \
+    copy-feats --compress=$compress $write_num_frames_opt ark:- \
       ark,scp:$pitch_dir/raw_pitch_$name.JOB.ark,$pitch_dir/raw_pitch_$name.JOB.scp \
      || exit 1;
 

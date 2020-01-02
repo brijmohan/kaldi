@@ -11,7 +11,7 @@ set -e
 
 #===== begin config =======
 nj=20
-stage=14
+stage=16
 
 librispeech_corpus=/home/bsrivast/asr_data/LibriSpeech
 
@@ -68,7 +68,7 @@ if [ $stage -le 7 ]; then
   python local/make_librispeech_eval2.py proto/eval2 ${librispeech_corpus} "" || exit 1;
 
   # Sort and fix all data directories
-  for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
+  for name in ${eval1_enroll} ${eval1_trial} ${eval2_enroll} ${eval2_trial}; do
     echo "Sorting data: $name"
     for f in `ls data/${name}`; do
       mv data/${name}/$f data/${name}/${f}.u
@@ -76,10 +76,25 @@ if [ $stage -le 7 ]; then
       rm data/${name}/${f}.u
     done
     utils/utt2spk_to_spk2utt.pl data/${name}/utt2spk > data/${name}/spk2utt
+
     utils/fix_data_dir.sh data/${name}
     utils/validate_data_dir.sh --no-feats --no-text data/${name}
+
+    : '
+    # Split the long utterances into less than 10s utterances
+    echo "Splitting long utterances due to NSF limitations..."
+    local/split_long_utterance.sh --seg-length 10 --min-seg-length 5 --overlap-length 2 \
+    	    data/${name}_long data/${name}
+    #utils/copy_data_dir.sh data/${name}_long data/${name}
+    #local/create_uniform_segments.py --overlap 5 --window 10 data/${name}  || exit 1;
+    utils/fix_data_dir.sh data/${name}
+    utils/validate_data_dir.sh --no-feats --no-text data/${name}
+    #rm -rf data/${name}_long
+    '
   done
 fi
+
+#exit 0;
 
 # Extract xvectors from data which has to be anonymized
 if [ $stage -le 8 ]; then
@@ -138,7 +153,8 @@ fi
 
 if [ $stage -le 14 ]; then
   echo "Stage 14: Generate waveform from NSF model for each data."
-  for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
+  #for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
+  for name in $eval1_trial $eval2_enroll $eval2_trial; do
     local/vc/nsf/01_gen.sh ${data_src_netcdf}/${name} || exit 1;
   done
 fi
@@ -148,15 +164,19 @@ if [ $stage -le 15 ]; then
   for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
     wav_path=${data_src_netcdf}/${name}/nsf_output_wav
     new_data_dir=data/${name}${anon_data_suffix}
-    utils/copy_data_dir.sh data/${name} ${new_data_dir}
+    cp -r data/${name} ${new_data_dir}
     # Copy new spk2gender in case cross_gender vc has been done
     cp ${anon_xvec_out_dir}/xvectors_${name}/pseudo_xvecs/spk2gender ${new_data_dir}/
-    awk -v p="$wav_path" '{print $1, p"/"$1".wav"}' data/${name}/wav.scp > ${new_data_dir}/wav.scp
+    awk -v p="$wav_path" '{print $1, "sox", p"/"$1".wav", "-t wav -r 16000 -b 16 - |"}' data/${name}/wav.scp > ${new_data_dir}/wav.scp
   done
 fi
 
 if [ $stage -le 16 ]; then
   echo "Stage 16: Evaluate the dataset using speaker verification."
+  #echo "Exp 0.1 baseline: Eval 1, enroll - original, trial - original"
+  #local/eval_libri.sh ${eval1_enroll} ${eval1_trial} || exit 1;
+  #echo "Exp 0.2 baseline: Eval 2, enroll - original, trial - original"
+  #local/eval_libri.sh ${eval2_enroll} ${eval2_trial} || exit 1;
   echo "Exp 1: Eval 1, enroll - original, trial - anonymized"
   local/eval_libri.sh ${eval1_enroll} ${eval1_trial}${anon_data_suffix} || exit 1;
   echo "Exp 2: Eval 1, enroll - anonymized, trial - anonymized"
