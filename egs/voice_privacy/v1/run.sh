@@ -11,13 +11,12 @@ set -e
 
 #===== begin config =======
 nj=20
-stage=16
+stage=7
 
 librispeech_corpus=/home/bsrivast/asr_data/LibriSpeech
 
 anoni_pool="libritts_train_other_500" # change this to the data you want to use for anonymization pool
-data_src= # Data to be anonymized, must be in Kaldi format
-data_src_netcdf=/home/bsrivast/asr_data/LibriTTS/am_nsf_data # change this to dir where VC features data will be stored
+data_netcdf=/home/bsrivast/asr_data/LibriTTS/am_nsf_data # change this to dir where VC features data will be stored
 
 # Chain model for PPG extraction
 ivec_extractor=exp/nnet3_cleaned/extractor # change this to the ivector extractor trained by chain models
@@ -79,93 +78,22 @@ if [ $stage -le 1 ]; then
 
     utils/fix_data_dir.sh data/${name}
     utils/validate_data_dir.sh --no-feats --no-text data/${name}
-
-    : '
-    # Split the long utterances into less than 10s utterances
-    echo "Splitting long utterances due to NSF limitations..."
-    local/split_long_utterance.sh --seg-length 10 --min-seg-length 5 --overlap-length 2 \
-    	    data/${name}_long data/${name}
-    #utils/copy_data_dir.sh data/${name}_long data/${name}
-    #local/create_uniform_segments.py --overlap 5 --window 10 data/${name}  || exit 1;
-    utils/fix_data_dir.sh data/${name}
-    utils/validate_data_dir.sh --no-feats --no-text data/${name}
-    #rm -rf data/${name}_long
-    '
   done
 fi
 
 # Extract xvectors from data which has to be anonymized
 if [ $stage -le 2 ]; then
-  echo "Stage 2: Extracting xvectors for source data."
+  echo "Stage 2: Anonymizing eval1 and eval2 data."
   for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-    local/featex/01_extract_xvectors.sh --nj $nj data/${name} ${xvec_nnet_dir} \
-	  ${anon_xvec_out_dir} || exit 1;
-  done
-fi
-
-# Extract pitch for source data
-if [ $stage -le 3 ]; then
-  echo "Stage 3: Pitch extraction for source data."
-  for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-    local/featex/02_extract_pitch.sh --nj ${nj} data/${name} || exit 1;
-  done
-fi
-
-# Extract PPGs for source data
-if [ $stage -le 4 ]; then
-  echo "Stage 4: PPG extraction for source data."
-  for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-    local/featex/extract_ppg.sh --nj $nj --stage 0 ${name} \
-	  ${ivec_extractor} ${ivec_data_dir}/ivectors_${name} \
-	  ${tree_dir} ${model_dir} ${lang_dir} ${ppg_dir}/ppg_${name} || exit 1;
-  done
-fi
-
-# Generate pseudo-speakers for source data
-if [ $stage -le 5 ]; then
-  echo "Stage 5: Generating pseudo-speakers for source data."
-  for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-    local/anon/make_pseudospeaker.sh --rand-level ${pseudo_xvec_rand_level} \
-      	  --cross-gender ${cross_gender} \
-	  data/${name} data/${anoni_pool} ${anon_xvec_out_dir} \
-	  ${plda_dir} || exit 1;
-  done
-fi
-
-# Create netcdf data for voice conversion
-if [ $stage -le 6 ]; then
-  echo "Stage 6: Make netcdf data for VC."
-  for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-    local/anon/make_netcdf.sh --stage 0 data/${name} ${ppg_dir}/ppg_${name}/phone_post.scp \
-	  ${anon_xvec_out_dir}/xvectors_${name}/pseudo_xvecs/pseudo_xvector.scp \
-	  ${data_src_netcdf}/${name} || exit 1;
-  done
-fi
-
-if [ $stage -le 7 ]; then
-  echo "Stage 7: Extract melspec from acoustic model for each data."
-  for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-    local/vc/am/01_gen.sh ${data_src_netcdf}/${name} || exit 1;
-  done
-fi
-
-if [ $stage -le 8 ]; then
-  echo "Stage 8: Generate waveform from NSF model for each data."
-  #for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-  for name in $eval1_trial $eval2_enroll $eval2_trial; do
-    local/vc/nsf/01_gen.sh ${data_src_netcdf}/${name} || exit 1;
-  done
-fi
-
-if [ $stage -le 9 ]; then
-  echo "Stage 9: Creating new data directories corresponding to anonymization."
-  for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-    wav_path=${data_src_netcdf}/${name}/nsf_output_wav
-    new_data_dir=data/${name}${anon_data_suffix}
-    cp -r data/${name} ${new_data_dir}
-    # Copy new spk2gender in case cross_gender vc has been done
-    cp ${anon_xvec_out_dir}/xvectors_${name}/pseudo_xvecs/spk2gender ${new_data_dir}/
-    awk -v p="$wav_path" '{print $1, "sox", p"/"$1".wav", "-t wav -r 16000 -b 16 - |"}' data/${name}/wav.scp > ${new_data_dir}/wav.scp
+    local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
+	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
+	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
+	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
+	 --xvec-nnet-dir ${xvec_nnet_dir} \
+	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} \
+	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
+	 ${name} || exit 1;
   done
 fi
 

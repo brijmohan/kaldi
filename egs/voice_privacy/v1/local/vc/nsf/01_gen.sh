@@ -36,7 +36,7 @@ export TEMP_WAVEFORM_MODEL_NETWORK_PATH=${proj_dir}/MODELS/h-sinc-NSF/epoch011.a
 export TEMP_WAVEFORM_TEMP_OUTPUT_DIRECTORY="${test_data_dir}/output_tmp"
 
 # generating
-python ${proj_dir}/../SCRIPTS/02_genwaveform.py config_libri
+python ${proj_dir}/../SCRIPTS/02_genwaveform.py config_libri_nsf
 
 rm -r ${TEMP_WAVEFORM_TEMP_OUTPUT_DIRECTORY}
 
