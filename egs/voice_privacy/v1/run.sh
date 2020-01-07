@@ -11,7 +11,7 @@ set -e
 
 #===== begin config =======
 nj=20
-stage=7
+stage=6
 
 librispeech_corpus=/home/bsrivast/asr_data/LibriSpeech
 
@@ -48,21 +48,20 @@ anon_data_suffix=_anon_${pseudo_xvec_rand_level}_${cross_gender}
 
 # Download pretrained models
 if [ $stage -le -1 ]; then
-  echo "Downloading only Voxceleb pretrained model currently."
+  printf "${GREEN}\nDownloading only Voxceleb pretrained model currently.${NC}\n"
   local/download_pretrained.sh
 fi
 
-
 # Extract xvectors from anonymization pool
 if [ $stage -le 0 ]; then
-  echo "Stage 0: Extracting xvectors for anonymization pool."
+  printf "${GREEN}\nStage 0: Extracting xvectors for anonymization pool.${NC}\n"
   local/featex/01_extract_xvectors.sh --nj $nj data/${anoni_pool} ${xvec_nnet_dir} \
 	  ${anon_xvec_out_dir}
 fi
 
 # Make evaluation data
 if [ $stage -le 1 ]; then
-  echo "Stage 1: Making evaluation data"
+  printf "${GREEN}\nStage 1: Making evaluation data${NC}\n"
   python local/make_librispeech_eval.py ./proto/eval1 ${librispeech_corpus}/test-clean "" || exit 1;
   python local/make_librispeech_eval2.py proto/eval2 ${librispeech_corpus} "" || exit 1;
 
@@ -83,7 +82,7 @@ fi
 
 # Extract xvectors from data which has to be anonymized
 if [ $stage -le 2 ]; then
-  echo "Stage 2: Anonymizing eval1 and eval2 data."
+  printf "${GREEN}\nStage 2: Anonymizing eval1 and eval2 data.${NC}\n"
   for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
     local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
 	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
@@ -97,20 +96,73 @@ if [ $stage -le 2 ]; then
   done
 fi
 
-if [ $stage -le 10 ]; then
-  echo "Stage 10: Evaluate the dataset using speaker verification."
-  #echo "Exp 0.1 baseline: Eval 1, enroll - original, trial - original"
-  #local/eval_libri.sh ${eval1_enroll} ${eval1_trial} || exit 1;
-  #echo "Exp 0.2 baseline: Eval 2, enroll - original, trial - original"
-  #local/eval_libri.sh ${eval2_enroll} ${eval2_trial} || exit 1;
-  echo "Exp 1: Eval 1, enroll - original, trial - anonymized"
+if [ $stage -le 3 ]; then
+  printf "${GREEN}\nStage 3: Evaluate the dataset using speaker verification.${NC}\n"
+  printf "${RED}**Exp 0.1 baseline: Eval 1, enroll - original, trial - original**${NC}\n"
+  local/eval_libri.sh ${eval1_enroll} ${eval1_trial} || exit 1;
+  printf "${RED}**Exp 0.2 baseline: Eval 2, enroll - original, trial - original**${NC}\n"
+  local/eval_libri.sh ${eval2_enroll} ${eval2_trial} || exit 1;
+  printf "${RED}**Exp 1: Eval 1, enroll - original, trial - anonymized**${NC}\n"
   local/eval_libri.sh ${eval1_enroll} ${eval1_trial}${anon_data_suffix} || exit 1;
-  echo "Exp 2: Eval 1, enroll - anonymized, trial - anonymized"
+  printf "${RED}**Exp 2: Eval 1, enroll - anonymized, trial - anonymized**${NC}\n"
   local/eval_libri.sh ${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
-  echo "Exp 3: Eval 2, enroll - original, trial - anonymized"
+  printf "${RED}**Exp 3: Eval 2, enroll - original, trial - anonymized**${NC}\n"
   local/eval_libri.sh ${eval2_enroll} ${eval2_trial}${anon_data_suffix} || exit 1;
-  echo "Exp 4: Eval 2, enroll - anonymized, trial - anonymized"
+  printf "${RED}**Exp 4: Eval 2, enroll - anonymized, trial - anonymized**${NC}\n"
   local/eval_libri.sh ${eval2_enroll}${anon_data_suffix} ${eval2_trial}${anon_data_suffix} || exit 1;
 fi
 
+if [ $stage -le 4 ]; then
+  printf "${GREEN}\nStage 4: Anonymizing adaptation data to adapt speaker verification PLDA.${NC}\n"
+  local/data_prep_adv.sh ${librispeech_corpus}/dev-other data/dev_other
+  
+  local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
+	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
+	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
+	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
+	 --xvec-nnet-dir ${xvec_nnet_dir} \
+	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} \
+	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
+	 dev_other || exit 1;
+  
+  adapt_data=dev_other${anon_data_suffix}
+  local/featex/01_extract_xvectors.sh --nj $nj data/${adapt_data} ${xvec_nnet_dir} \
+	  ${anon_xvec_out_dir}
 
+  printf "${RED}Adapting the VoxCeleb model to ${adapt_data}...${NC}\n"
+  $train_cmd ${anon_xvec_out_dir}/xvectors_${adapt_data}/log/plda_adapt.log \
+    ivector-adapt-plda --within-covar-scale=0.75 --between-covar-scale=0.25 \
+    $plda_dir/plda \
+    "ark:ivector-subtract-global-mean scp:${anon_xvec_out_dir}/xvectors_${adapt_data}/xvector.scp ark:- | transform-vec ${plda_dir}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    ${anon_xvec_out_dir}/xvectors_${adapt_data}/plda || exit 1;
+fi
+
+if [ $stage -le 5 ]; then
+  printf "${GREEN}\nStage 5: Evaluate the dataset using ADAPTED speaker verification.${NC}\n"
+  printf "${RED}\n**Exp 5: Eval 1, enroll - anonymized, trial - anonymized**${NC}\n"
+  local/eval_libri.sh --nnet-dir ${xvec_nnet_dir} \
+	--plda-dir ${anon_xvec_out_dir}/xvectors_${adapt_data} \
+	${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
+  printf "${RED}**Exp 6: Eval 2, enroll - anonymized, trial - anonymized**${NC}\n"
+  local/eval_libri.sh --nnet-dir ${xvec_nnet_dir} \
+	--plda-dir ${anon_xvec_out_dir}/xvectors_${adapt_data} \
+	${eval2_enroll}${anon_data_suffix} ${eval2_trial}${anon_data_suffix} || exit 1;
+fi
+
+if [ $stage -le 6 ]; then
+  printf "${GREEN}\nStage 6: Anonymizing train data for Informed xvector model.${NC}\n"
+  #local/data_prep_adv.sh ${librispeech_corpus}/train-clean-360 data/train_clean_360
+  
+  local/anon/anonymize_data_dir.sh --nj $nj --stage 4 --anoni-pool ${anoni_pool} \
+	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
+	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
+	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
+	 --xvec-nnet-dir ${xvec_nnet_dir} \
+	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} \
+	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
+	 train_clean_360 || exit 1;
+  
+  axvec_train_data=train_clean_360${anon_data_suffix}
+fi

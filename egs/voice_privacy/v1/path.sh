@@ -8,3 +8,9 @@ PYTOOLS_PATH=/home/bsrivast/ssw_paper/project-CURRENNT-public/pyTools
 NETCDF_BIN=/home/bsrivast/ssw_paper/netcdf-c-4.3.3.1/build/bin
 export PYTHONPATH=$PYTHONPATH:$PYTOOLS_PATH
 export PATH=$PATH:$NETCDF_BIN
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+

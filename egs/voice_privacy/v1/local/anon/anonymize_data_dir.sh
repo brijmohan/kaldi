@@ -53,14 +53,14 @@ data_dir="$1" # Data to be anonymized, must be in Kaldi format
 
 # Extract xvectors from data which has to be anonymized
 if [ $stage -le 0 ]; then
-  echo "Stage a.0: Extracting xvectors for ${data_dir}."
+  printf "${RED}\nStage a.0: Extracting xvectors for ${data_dir}.${NC}\n"
   local/featex/01_extract_xvectors.sh --nj $nj data/${data_dir} ${xvec_nnet_dir} \
 	  ${anon_xvec_out_dir} || exit 1;
 fi
 
 # Generate pseudo-speakers for source data
 if [ $stage -le 1 ]; then
-  echo "Stage a.1: Generating pseudo-speakers for ${data_dir}."
+  printf "${RED}\nStage a.1: Generating pseudo-speakers for ${data_dir}.${NC}\n"
   local/anon/make_pseudospeaker.sh --rand-level ${pseudo_xvec_rand_level} \
       	  --cross-gender ${cross_gender} \
 	  data/${data_dir} data/${anoni_pool} ${anon_xvec_out_dir} \
@@ -69,13 +69,13 @@ fi
 
 # Extract pitch for source data
 if [ $stage -le 2 ]; then
-  echo "Stage a.2: Pitch extraction for ${data_dir}."
+  printf "${RED}\nStage a.2: Pitch extraction for ${data_dir}.${NC}\n"
   local/featex/02_extract_pitch.sh --nj ${nj} data/${data_dir} || exit 1;
 fi
 
 # Extract PPGs for source data
 if [ $stage -le 3 ]; then
-  echo "Stage a.3: PPG extraction for ${data_dir}."
+  printf "${RED}\nStage a.3: PPG extraction for ${data_dir}.${NC}\n"
   local/featex/extract_ppg.sh --nj $nj --stage 0 ${data_dir} \
 	  ${ivec_extractor} ${ivec_data_dir}/ivectors_${data_dir} \
 	  ${tree_dir} ${model_dir} ${lang_dir} ${ppg_dir}/ppg_${data_dir} || exit 1;
@@ -83,24 +83,24 @@ fi
 
 # Create netcdf data for voice conversion
 if [ $stage -le 4 ]; then
-  echo "Stage a.4: Make netcdf data for VC."
+  printf "${RED}\nStage a.4: Make netcdf data for VC.${NC}\n"
   local/anon/make_netcdf.sh --stage 0 data/${data_dir} ${ppg_dir}/ppg_${data_dir}/phone_post.scp \
 	  ${anon_xvec_out_dir}/xvectors_${data_dir}/pseudo_xvecs/pseudo_xvector.scp \
 	  ${data_netcdf}/${data_dir} || exit 1;
 fi
 
 if [ $stage -le 5 ]; then
-  echo "Stage a.5: Extract melspec from acoustic model for ${data_dir}."
+  printf "${RED}\nStage a.5: Extract melspec from acoustic model for ${data_dir}.${NC}\n"
   local/vc/am/01_gen.sh ${data_netcdf}/${data_dir} || exit 1;
 fi
 
 if [ $stage -le 6 ]; then
-  echo "Stage a.6: Generate waveform from NSF model for ${data_dir}."
+  printf "${RED}\nStage a.6: Generate waveform from NSF model for ${data_dir}.${NC}\n"
   local/vc/nsf/01_gen.sh ${data_netcdf}/${data_dir} || exit 1;
 fi
 
 if [ $stage -le 7 ]; then
-  echo "Stage a.7: Creating new data directories corresponding to anonymization."
+  printf "${RED}\nStage a.7: Creating new data directories corresponding to anonymization.${NC}\n"
   wav_path=${data_netcdf}/${data_dir}/nsf_output_wav
   new_data_dir=data/${data_dir}${anon_data_suffix}
   cp -r data/${data_dir} ${new_data_dir}
