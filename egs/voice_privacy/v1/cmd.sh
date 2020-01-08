@@ -12,5 +12,6 @@
 
 #export train_cmd="queue.pl --mem 4G"
 export train_cmd="run.pl --mem 4G"
+export decode_cmd="run.pl --mem 4G"
 
 

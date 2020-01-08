@@ -11,7 +11,7 @@ set -e
 
 #===== begin config =======
 nj=20
-stage=6
+stage=8
 
 librispeech_corpus=/home/bsrivast/asr_data/LibriSpeech
 
@@ -99,15 +99,15 @@ fi
 if [ $stage -le 3 ]; then
   printf "${GREEN}\nStage 3: Evaluate the dataset using speaker verification.${NC}\n"
   printf "${RED}**Exp 0.1 baseline: Eval 1, enroll - original, trial - original**${NC}\n"
-  local/eval_libri.sh ${eval1_enroll} ${eval1_trial} || exit 1;
+  local/asv_eval.sh ${eval1_enroll} ${eval1_trial} || exit 1;
   printf "${RED}**Exp 0.2 baseline: Eval 2, enroll - original, trial - original**${NC}\n"
-  local/eval_libri.sh ${eval2_enroll} ${eval2_trial} || exit 1;
+  local/asv_eval.sh ${eval2_enroll} ${eval2_trial} || exit 1;
   printf "${RED}**Exp 1: Eval 1, enroll - original, trial - anonymized**${NC}\n"
-  local/eval_libri.sh ${eval1_enroll} ${eval1_trial}${anon_data_suffix} || exit 1;
+  local/asv_eval.sh ${eval1_enroll} ${eval1_trial}${anon_data_suffix} || exit 1;
   printf "${RED}**Exp 2: Eval 1, enroll - anonymized, trial - anonymized**${NC}\n"
-  local/eval_libri.sh ${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
+  local/asv_eval.sh ${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
   printf "${RED}**Exp 3: Eval 2, enroll - original, trial - anonymized**${NC}\n"
-  local/eval_libri.sh ${eval2_enroll} ${eval2_trial}${anon_data_suffix} || exit 1;
+  local/asv_eval.sh ${eval2_enroll} ${eval2_trial}${anon_data_suffix} || exit 1;
   printf "${RED}**Exp 4: Eval 2, enroll - anonymized, trial - anonymized**${NC}\n"
   local/eval_libri.sh ${eval2_enroll}${anon_data_suffix} ${eval2_trial}${anon_data_suffix} || exit 1;
 fi
@@ -141,18 +141,19 @@ fi
 if [ $stage -le 5 ]; then
   printf "${GREEN}\nStage 5: Evaluate the dataset using ADAPTED speaker verification.${NC}\n"
   printf "${RED}\n**Exp 5: Eval 1, enroll - anonymized, trial - anonymized**${NC}\n"
-  local/eval_libri.sh --nnet-dir ${xvec_nnet_dir} \
+  local/asv_eval.sh --nnet-dir ${xvec_nnet_dir} \
 	--plda-dir ${anon_xvec_out_dir}/xvectors_${adapt_data} \
 	${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
   printf "${RED}**Exp 6: Eval 2, enroll - anonymized, trial - anonymized**${NC}\n"
-  local/eval_libri.sh --nnet-dir ${xvec_nnet_dir} \
+  local/asv_eval.sh --nnet-dir ${xvec_nnet_dir} \
 	--plda-dir ${anon_xvec_out_dir}/xvectors_${adapt_data} \
 	${eval2_enroll}${anon_data_suffix} ${eval2_trial}${anon_data_suffix} || exit 1;
 fi
 
-if [ $stage -le 6 ]; then
+# Not anonymizing train-clean-360 here since it takes enormous amount of time and memory
+if [ $stage -le 6 ] && false; then
   printf "${GREEN}\nStage 6: Anonymizing train data for Informed xvector model.${NC}\n"
-  #local/data_prep_adv.sh ${librispeech_corpus}/train-clean-360 data/train_clean_360
+  local/data_prep_adv.sh ${librispeech_corpus}/train-clean-360 data/train_clean_360
   
   local/anon/anonymize_data_dir.sh --nj $nj --stage 4 --anoni-pool ${anoni_pool} \
 	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
@@ -165,4 +166,25 @@ if [ $stage -le 6 ]; then
 	 train_clean_360 || exit 1;
   
   axvec_train_data=train_clean_360${anon_data_suffix}
+fi
+
+if [ $stage -le 7 ]; then
+  printf "${GREEN}\nStage 7: Anonymizing test-clean data for intelligibility assessment.${NC}\n"
+  local/data_prep_adv.sh ${librispeech_corpus}/test-clean data/test_clean
+  
+  local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
+	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
+	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
+	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
+	 --xvec-nnet-dir ${xvec_nnet_dir} \
+	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} \
+	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
+	 test_clean || exit 1;
+fi
+
+if [ $stage -le 8 ]; then
+  asr_eval_data=test_clean${anon_data_suffix}
+  printf "${GREEN}\nStage 8: Performing intelligibility assessment using ASR decoding on ${asr_eval_data}.${NC}\n"
+  local/asr_eval.sh --nj $nj --stage 1 ${asr_eval_data} exp/asr_eval_model
 fi
