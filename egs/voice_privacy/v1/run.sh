@@ -186,5 +186,5 @@ fi
 if [ $stage -le 8 ]; then
   asr_eval_data=test_clean${anon_data_suffix}
   printf "${GREEN}\nStage 8: Performing intelligibility assessment using ASR decoding on ${asr_eval_data}.${NC}\n"
-  local/asr_eval.sh --nj $nj --stage 1 ${asr_eval_data} exp/asr_eval_model
+  local/asr_eval.sh --nj $nj ${asr_eval_data} exp/asr_eval_model
 fi
