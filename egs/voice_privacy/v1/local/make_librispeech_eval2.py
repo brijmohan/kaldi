@@ -19,6 +19,7 @@ trial_files = ["dev_clean_trials.txt"]
 
 # Prepare enroll data
 enroll_dir = 'data/eval2_enroll'+exp_tag
+prefix_spkid = {}
 if exists(enroll_dir):
     shutil.rmtree(enroll_dir)
 os.makedirs(enroll_dir)
@@ -35,7 +36,11 @@ for ef in enroll_files:
             spk2gender.append(spkid + ' ' + gender)
             uttarr = line[1].split(',')
             for utt in uttarr:
-                uttid = spkid+'-'+utt.split('/')[-1].split('.')[0]
+                uttid = utt.split('/')[-1].split('.')[0]
+                prefix_key = uttid.split('-')[0]
+                if prefix_key not in prefix_spkid:
+                    prefix_spkid[prefix_key] = spkid
+                uttid = spkid+'-'+uttid
                 uttpath = join(data_path, utt)
                 enroll_wav_scp.append(uttid + ' flac -c -d -s ' + uttpath + ' | ')
                 enroll_utt2spk.append(uttid + ' ' + spkid)
@@ -58,6 +63,7 @@ if exists(trial_dir):
 os.makedirs(trial_dir)
 trial_wav_scp = []
 trial_utt2spk = []
+spk2gender = []
 trial_trials_male = []
 trial_trials_female = []
 for i, tf in enumerate(trial_files):
@@ -69,10 +75,20 @@ for i, tf in enumerate(trial_files):
             utt = line[1]
             target_type = line[2]
             gender = line[3]
-            uttid = spkid+'-'+utt.split('/')[-1].split('.')[0]
+
+            uttid = utt.split('/')[-1].split('.')[0]
+            prefix_key = uttid.split('-')[0]
+            if prefix_key in prefix_spkid:
+                prefix = prefix_spkid[prefix_key]
+            else:
+                prefix = 'dev_clean_'+prefix_key
+                prefix_spkid[prefix_key] = prefix
+            uttid = prefix + '-' + uttid
+            spk2gender.append(prefix + ' ' + gender.lower())
+
             uttpath = join(data_path, utt)
             trial_wav_scp.append(uttid + ' flac -c -d -s ' + uttpath + ' | ')
-            trial_utt2spk.append(uttid + ' ' + spkid)
+            trial_utt2spk.append(uttid + ' ' + prefix)
             if gender == 'M':
                 trial_trials_male.append(spkid + ' ' + uttid + ' ' + target_type)
             else:
