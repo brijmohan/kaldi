@@ -20,6 +20,7 @@ trial_files = ["Librispeech.asv_test_male.trl",
 
 # Prepare enroll data
 enroll_dir = 'data/eval1_enroll'+exp_tag
+prefix_spkid = {}
 if exists(enroll_dir):
     shutil.rmtree(enroll_dir)
 os.makedirs(enroll_dir)
@@ -36,7 +37,12 @@ for ef in enroll_files:
             spk2gender.append(spkid + ' ' +gender)
             uttarr = line[1].split(',')
             for utt in uttarr:
-                uttid = spkid+'-'+utt.split('/')[-1]
+                #uttid = spkid+'-'+utt.split('/')[-1]
+                uttid = utt.split('/')[-1]
+                prefix_key = uttid.split('-')[0]
+                if prefix_key not in prefix_spkid:
+                    prefix_spkid[prefix_key] = spkid
+                uttid = spkid + '-' + uttid
                 uttpath = join(data_path, utt)+'.flac'
                 enroll_wav_scp.append(uttid + ' flac -c -d -s ' + uttpath + ' | ')
                 enroll_utt2spk.append(uttid + ' ' + spkid)
@@ -59,6 +65,7 @@ if exists(trial_dir):
 os.makedirs(trial_dir)
 trial_wav_scp = []
 trial_utt2spk = []
+spk2gender = []
 trial_trials_male = []
 trial_trials_female = []
 for i, tf in enumerate(trial_files):
@@ -69,10 +76,20 @@ for i, tf in enumerate(trial_files):
             spkid = line[0]
             utt = line[1]
             target_type = line[3]
-            uttid = spkid+'-'+utt.split('/')[-1]
+            #uttid = spkid+'-'+utt.split('/')[-1]
+            uttid = utt.split('/')[-1]
+            prefix_key = uttid.split('-')[0]
+            if prefix_key in prefix_spkid:
+                prefix = prefix_spkid[prefix_key]
+            else:
+                prefix = spkid.split('_')[0]+'_'+prefix_key
+                prefix_spkid[prefix_key] = prefix
+            uttid = prefix + '-' + uttid
+            gender = prefix.split('_')[0].split('-')[-1][0]
+            spk2gender.append(prefix + ' ' +gender)
             uttpath = join(data_path, utt)+'.flac'
-            trial_wav_scp.append(uttid + '\t flac -c -d -s ' + uttpath + ' | ')
-            trial_utt2spk.append(uttid + '\t' + spkid)
+            trial_wav_scp.append(uttid + ' flac -c -d -s ' + uttpath + ' | ')
+            trial_utt2spk.append(uttid + ' ' + prefix)
             if i == 0:
                 trial_trials_male.append(spkid + ' ' + uttid + ' ' + target_type)
             else:

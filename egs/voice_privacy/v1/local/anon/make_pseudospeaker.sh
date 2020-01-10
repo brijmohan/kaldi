@@ -4,6 +4,8 @@
 
 rand_level="spk"
 cross_gender="false"
+distance="cosine"
+
 stage=0
 
 . utils/parse_options.sh
@@ -38,12 +40,18 @@ src_spk2gender=${src_data}/spk2gender
 pool_spk2gender=${pool_data}/spk2gender
 
 if [ $stage -le 0 ]; then
-  echo "Computing affinity scores of each source speaker to each pool speaker."
-  cut -d\  -f 1 ${src_spk2gender} | while read s; do
-    #echo "Speaker: $s"
-    local/anon/compute_spk_pool_affinity.sh ${plda_dir} ${src_xvec_dir} ${pool_xvec_dir} \
+  if [ "$distance" = "cosine" ]; then
+    echo "Computing cosine similarity between source to each pool speaker."
+    python local/anon/compute_spk_pool_cosine.py ${src_xvec_dir} ${pool_xvec_dir} \
+	    ${affinity_scores_dir}
+  elif [ "$distance" = "plda" ]; then
+    echo "Computing PLDA affinity scores of each source speaker to each pool speaker."
+    cut -d\  -f 1 ${src_spk2gender} | while read s; do
+      #echo "Speaker: $s"
+      local/anon/compute_spk_pool_affinity.sh ${plda_dir} ${src_xvec_dir} ${pool_xvec_dir} \
 	   "$s" "${affinity_scores_dir}/affinity_${s}" || exit 1;
-  done
+    done
+  fi
 fi
 
 if [ $stage -le 1 ]; then

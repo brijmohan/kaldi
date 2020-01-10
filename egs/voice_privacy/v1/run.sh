@@ -8,10 +8,11 @@
 . cmd.sh
 
 set -e
+export LC_ALL=C
 
 #===== begin config =======
 nj=20
-stage=8
+stage=3
 
 librispeech_corpus=/home/bsrivast/asr_data/LibriSpeech
 
@@ -19,14 +20,14 @@ anoni_pool="libritts_train_other_500" # change this to the data you want to use 
 data_netcdf=/home/bsrivast/asr_data/LibriTTS/am_nsf_data # change this to dir where VC features data will be stored
 
 # Chain model for PPG extraction
-ivec_extractor=exp/nnet3_cleaned/extractor # change this to the ivector extractor trained by chain models
-ivec_data_dir=exp/nnet3_cleaned # change this to the directory where ivectors will stored for your data
+ivec_extractor=exp/asr_ppg_model/nnet3_cleaned/extractor # change this to the ivector extractor trained by chain models
+ivec_data_dir=exp/asr_ppg_model/nnet3_cleaned # change this to the directory where ivectors will stored for your data
 
-tree_dir=exp/chain_cleaned/tree_sp # change this to tree dir of your chain model
-model_dir=exp/chain_cleaned/tdnn_1d_sp # change this to your pretrained chain model
-lang_dir=data/lang_chain # change this to the land dir of your chain model
+tree_dir=exp/asr_ppg_model/chain_cleaned/tree_sp # change this to tree dir of your chain model
+model_dir=exp/asr_ppg_model/chain_cleaned/tdnn_1d_sp # change this to your pretrained chain model
+lang_dir=exp/asr_ppg_model/lang_chain # change this to the land dir of your chain model
 
-ppg_dir=exp/nnet3_cleaned # change this to the dir where PPGs will be stored
+ppg_dir=exp/asr_ppg_model/nnet3_cleaned # change this to the dir where PPGs will be stored
 
 # x-vector extraction
 xvec_nnet_dir=exp/0007_voxceleb_v2_1a/exp/xvector_nnet_1a # change this to pretrained xvector model downloaded from Kaldi website
@@ -36,6 +37,7 @@ plda_dir=${xvec_nnet_dir}/xvectors_train
 
 pseudo_xvec_rand_level=spk  # spk (all utterances will have same xvector) or utt (each utterance will have randomly selected xvector)
 cross_gender="false"        # true, same gender xvectors will be selected; false, other gender xvectors
+distance="cosine"           # cosine or plda
 
 eval1_enroll=eval1_enroll
 eval1_trial=eval1_trial
@@ -63,10 +65,11 @@ fi
 if [ $stage -le 1 ]; then
   printf "${GREEN}\nStage 1: Making evaluation data${NC}\n"
   python local/make_librispeech_eval.py ./proto/eval1 ${librispeech_corpus}/test-clean "" || exit 1;
-  python local/make_librispeech_eval2.py proto/eval2 ${librispeech_corpus} "" || exit 1;
+  #python local/make_librispeech_eval2.py proto/eval2 ${librispeech_corpus} "" || exit 1;
 
   # Sort and fix all data directories
-  for name in ${eval1_enroll} ${eval1_trial} ${eval2_enroll} ${eval2_trial}; do
+  #for name in ${eval1_enroll} ${eval1_trial} ${eval2_enroll} ${eval2_trial}; do
+  for name in ${eval1_enroll} ${eval1_trial}; do
     echo "Sorting data: $name"
     for f in `ls data/${name}`; do
       mv data/${name}/$f data/${name}/${f}.u
@@ -83,14 +86,15 @@ fi
 # Extract xvectors from data which has to be anonymized
 if [ $stage -le 2 ]; then
   printf "${GREEN}\nStage 2: Anonymizing eval1 and eval2 data.${NC}\n"
-  for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
+  #for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
+  for name in $eval1_trial; do
     local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
 	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
 	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
 	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
 	 --xvec-nnet-dir ${xvec_nnet_dir} \
 	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
-	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} --distance ${distance} \
 	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
 	 ${name} || exit 1;
   done
@@ -98,19 +102,21 @@ fi
 
 if [ $stage -le 3 ]; then
   printf "${GREEN}\nStage 3: Evaluate the dataset using speaker verification.${NC}\n"
-  printf "${RED}**Exp 0.1 baseline: Eval 1, enroll - original, trial - original**${NC}\n"
-  local/asv_eval.sh ${eval1_enroll} ${eval1_trial} || exit 1;
-  printf "${RED}**Exp 0.2 baseline: Eval 2, enroll - original, trial - original**${NC}\n"
-  local/asv_eval.sh ${eval2_enroll} ${eval2_trial} || exit 1;
+  #printf "${RED}**Exp 0.1 baseline: Eval 1, enroll - original, trial - original**${NC}\n"
+  #local/asv_eval.sh ${eval1_enroll} ${eval1_trial} || exit 1;
+  #printf "${RED}**Exp 0.2 baseline: Eval 2, enroll - original, trial - original**${NC}\n"
+  #local/asv_eval.sh ${eval2_enroll} ${eval2_trial} || exit 1;
   printf "${RED}**Exp 1: Eval 1, enroll - original, trial - anonymized**${NC}\n"
   local/asv_eval.sh ${eval1_enroll} ${eval1_trial}${anon_data_suffix} || exit 1;
   printf "${RED}**Exp 2: Eval 1, enroll - anonymized, trial - anonymized**${NC}\n"
   local/asv_eval.sh ${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
-  printf "${RED}**Exp 3: Eval 2, enroll - original, trial - anonymized**${NC}\n"
-  local/asv_eval.sh ${eval2_enroll} ${eval2_trial}${anon_data_suffix} || exit 1;
-  printf "${RED}**Exp 4: Eval 2, enroll - anonymized, trial - anonymized**${NC}\n"
-  local/eval_libri.sh ${eval2_enroll}${anon_data_suffix} ${eval2_trial}${anon_data_suffix} || exit 1;
+  #printf "${RED}**Exp 3: Eval 2, enroll - original, trial - anonymized**${NC}\n"
+  #local/asv_eval.sh ${eval2_enroll} ${eval2_trial}${anon_data_suffix} || exit 1;
+  #printf "${RED}**Exp 4: Eval 2, enroll - anonymized, trial - anonymized**${NC}\n"
+  #local/asv_eval.sh ${eval2_enroll}${anon_data_suffix} ${eval2_trial}${anon_data_suffix} || exit 1;
 fi
+
+exit 0;
 
 if [ $stage -le 4 ]; then
   printf "${GREEN}\nStage 4: Anonymizing adaptation data to adapt speaker verification PLDA.${NC}\n"

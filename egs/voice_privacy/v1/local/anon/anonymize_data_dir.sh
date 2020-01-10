@@ -34,6 +34,7 @@ plda_dir=${xvec_nnet_dir}/xvectors_train
 
 pseudo_xvec_rand_level=spk  # spk (all utterances will have same xvector) or utt (each utterance will have randomly selected xvector)
 cross_gender="false"        # true, same gender xvectors will be selected; false, other gender xvectors
+distance="cosine"
 
 anon_data_suffix=_anon_${pseudo_xvec_rand_level}_${cross_gender}
 
@@ -62,7 +63,7 @@ fi
 if [ $stage -le 1 ]; then
   printf "${RED}\nStage a.1: Generating pseudo-speakers for ${data_dir}.${NC}\n"
   local/anon/make_pseudospeaker.sh --rand-level ${pseudo_xvec_rand_level} \
-      	  --cross-gender ${cross_gender} \
+      	  --cross-gender ${cross_gender} --distance ${distance} \
 	  data/${data_dir} data/${anoni_pool} ${anon_xvec_out_dir} \
 	  ${plda_dir} || exit 1;
 fi
