@@ -104,6 +104,9 @@ if [ $stage -le 7 ]; then
   printf "${RED}\nStage a.7: Creating new data directories corresponding to anonymization.${NC}\n"
   wav_path=${data_netcdf}/${data_dir}/nsf_output_wav
   new_data_dir=data/${data_dir}${anon_data_suffix}
+  if [ -d "$new_data_dir" ]; then
+    rm -rf ${new_data_dir}
+  fi
   cp -r data/${data_dir} ${new_data_dir}
   # Copy new spk2gender in case cross_gender vc has been done
   cp ${anon_xvec_out_dir}/xvectors_${data_dir}/pseudo_xvecs/spk2gender ${new_data_dir}/

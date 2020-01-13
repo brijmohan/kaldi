@@ -17,6 +17,7 @@ vaddir=`pwd`/mfcc
 
 nnet_dir=exp/0007_voxceleb_v2_1a/exp/xvector_nnet_1a # Pretrained model downloaded from Kaldi website
 plda_dir=${nnet_dir}/xvectors_train
+score_dist=
 
 stage=1
 
@@ -36,6 +37,12 @@ libri_trials=$2
 librispeech_trials_file=data/$libri_trials/trials
 libri_male=${librispeech_trials_file}_male
 libri_female=${librispeech_trials_file}_female
+
+scores_file=exp/scores/score_${libri_enroll}_${libri_trials}
+
+if [ -z "${score_dist}" ]; then
+  score_dist=data/${libri_trials}/score_dist.png
+fi
 
 nj=29
 if [ $stage -le 1 ]; then
@@ -72,13 +79,18 @@ if [ $stage -le 3 ]; then
     "ivector-copy-plda --smoothing=0.0 $plda_dir/plda - |" \
     "ark:ivector-mean ark:data/${libri_enroll}/spk2utt scp:${nnet_dir}/xvectors_${libri_enroll}/xvector.scp ark:- | ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec ark:- ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
     "ark:ivector-subtract-global-mean $nnet_dir/xvectors_train/mean.vec scp:$nnet_dir/xvectors_${libri_trials}/xvector.scp ark:- | transform-vec $nnet_dir/xvectors_train/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
-    "cat '$librispeech_trials_file' | cut -d\  --fields=1,2 |" exp/scores_libri_trials || exit 1;
+    "cat '$librispeech_trials_file' | cut -d\  --fields=1,2 |" ${scores_file} || exit 1;
 
-  utils/filter_scp.pl $libri_male exp/scores_libri_trials > exp/scores_libri_male
-  utils/filter_scp.pl $libri_female exp/scores_libri_trials > exp/scores_libri_female
-  pooled_eer=$(paste $librispeech_trials_file exp/scores_libri_trials | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  male_eer=$(paste $libri_male exp/scores_libri_male | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
-  female_eer=$(paste $libri_female exp/scores_libri_female | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  utils/filter_scp.pl $libri_male ${scores_file} > ${scores_file}_male
+  utils/filter_scp.pl $libri_female ${scores_file} > ${scores_file}_female
+  pooled_eer=$(paste $librispeech_trials_file ${scores_file} | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  male_eer=$(paste $libri_male ${scores_file}_male | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  female_eer=$(paste $libri_female ${scores_file}_female | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
   echo "EER: Pooled ${pooled_eer}%, Male ${male_eer}%, Female ${female_eer}%"
+
+  # Plot the scores
+  echo "Plotting trial scores distribution."
+  mkdir -p $(dirname "${score_dist}")
+  python local/plot/plot_trial_score_dist.py "${librispeech_trials_file}" ${scores_file} "${score_dist}"
 fi
 

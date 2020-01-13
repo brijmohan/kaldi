@@ -35,16 +35,17 @@ anon_xvec_out_dir=${xvec_nnet_dir}/anon
 
 plda_dir=${xvec_nnet_dir}/xvectors_train
 
-pseudo_xvec_rand_level=spk  # spk (all utterances will have same xvector) or utt (each utterance will have randomly selected xvector)
+pseudo_xvec_rand_level=utt  # spk (all utterances will have same xvector) or utt (each utterance will have randomly selected xvector)
 cross_gender="false"        # true, same gender xvectors will be selected; false, other gender xvectors
-distance="cosine"           # cosine or plda
+distance="plda"           # cosine or plda
 
 eval1_enroll=eval1_enroll
 eval1_trial=eval1_trial
 eval2_enroll=eval2_enroll
 eval2_trial=eval2_trial
 
-anon_data_suffix=_anon_${pseudo_xvec_rand_level}_${cross_gender}
+anon_data_suffix=_anon_${pseudo_xvec_rand_level}_${cross_gender}_${distance}
+score_dist_dir=exp/score_dist
 
 #=========== end config ===========
 
@@ -65,11 +66,11 @@ fi
 if [ $stage -le 1 ]; then
   printf "${GREEN}\nStage 1: Making evaluation data${NC}\n"
   python local/make_librispeech_eval.py ./proto/eval1 ${librispeech_corpus}/test-clean "" || exit 1;
-  #python local/make_librispeech_eval2.py proto/eval2 ${librispeech_corpus} "" || exit 1;
+  python local/make_librispeech_eval2.py proto/eval2 ${librispeech_corpus} "" || exit 1;
 
   # Sort and fix all data directories
-  #for name in ${eval1_enroll} ${eval1_trial} ${eval2_enroll} ${eval2_trial}; do
-  for name in ${eval1_enroll} ${eval1_trial}; do
+  for name in ${eval1_enroll} ${eval1_trial} ${eval2_enroll} ${eval2_trial}; do
+  #for name in ${eval2_enroll} ${eval2_trial}; do
     echo "Sorting data: $name"
     for f in `ls data/${name}`; do
       mv data/${name}/$f data/${name}/${f}.u
@@ -87,7 +88,7 @@ fi
 if [ $stage -le 2 ]; then
   printf "${GREEN}\nStage 2: Anonymizing eval1 and eval2 data.${NC}\n"
   #for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-  for name in $eval1_trial; do
+  for name in $eval1_enroll $eval1_trial; do
     local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
 	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
 	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
@@ -101,15 +102,17 @@ if [ $stage -le 2 ]; then
 fi
 
 if [ $stage -le 3 ]; then
-  printf "${GREEN}\nStage 3: Evaluate the dataset using speaker verification.${NC}\n"
+  #printf "${GREEN}\nStage 3: Evaluate the dataset using speaker verification.${NC}\n"
   #printf "${RED}**Exp 0.1 baseline: Eval 1, enroll - original, trial - original**${NC}\n"
   #local/asv_eval.sh ${eval1_enroll} ${eval1_trial} || exit 1;
   #printf "${RED}**Exp 0.2 baseline: Eval 2, enroll - original, trial - original**${NC}\n"
   #local/asv_eval.sh ${eval2_enroll} ${eval2_trial} || exit 1;
+  oa_dist_plot=${score_dist_dir}/${eval1_trial}${anon_data_suffix}_oa.png
+  aa_dist_plot=${score_dist_dir}/${eval1_trial}${anon_data_suffix}_aa.png
   printf "${RED}**Exp 1: Eval 1, enroll - original, trial - anonymized**${NC}\n"
-  local/asv_eval.sh ${eval1_enroll} ${eval1_trial}${anon_data_suffix} || exit 1;
+  local/asv_eval.sh --stage 3 --score-dist ${oa_dist_plot} ${eval1_enroll} ${eval1_trial}${anon_data_suffix} || exit 1;
   printf "${RED}**Exp 2: Eval 1, enroll - anonymized, trial - anonymized**${NC}\n"
-  local/asv_eval.sh ${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
+  local/asv_eval.sh --score-dist ${aa_dist_plot} ${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
   #printf "${RED}**Exp 3: Eval 2, enroll - original, trial - anonymized**${NC}\n"
   #local/asv_eval.sh ${eval2_enroll} ${eval2_trial}${anon_data_suffix} || exit 1;
   #printf "${RED}**Exp 4: Eval 2, enroll - anonymized, trial - anonymized**${NC}\n"
@@ -128,7 +131,7 @@ if [ $stage -le 4 ]; then
 	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
 	 --xvec-nnet-dir ${xvec_nnet_dir} \
 	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
-	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level}  --distance ${distance} \
 	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
 	 dev_other || exit 1;
   
@@ -167,7 +170,7 @@ if [ $stage -le 6 ] && false; then
 	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
 	 --xvec-nnet-dir ${xvec_nnet_dir} \
 	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
-	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level}  --distance ${distance} \
 	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
 	 train_clean_360 || exit 1;
   
@@ -184,7 +187,7 @@ if [ $stage -le 7 ]; then
 	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
 	 --xvec-nnet-dir ${xvec_nnet_dir} \
 	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
-	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level}  --distance ${distance} \
 	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
 	 test_clean || exit 1;
 fi
