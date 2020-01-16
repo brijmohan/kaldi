@@ -22,8 +22,10 @@
 ###########################################################################
 
 import os
+from os.path import join
+
 import sys
-prjdir = '/home/bsrivast/vc_tools/eurecom_nii_paper/project-CURRENNT-scripts/acoustic-modeling/project-DAR-continuous'
+prjdir = join(os.getenv('CURRENNT_SCRIPTS'), 'acoustic-modeling/project-DAR-continuous')
 
 # -------------------------------------------------
 # --------------- Configuration start --------------
