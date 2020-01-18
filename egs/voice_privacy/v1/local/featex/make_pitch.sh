@@ -17,6 +17,7 @@ paste_length_tolerance=2
 compress=true
 write_utt2num_frames=false  # If true writes utt2num_frames.
 write_utt2dur=false
+yaapt_pitch=false
 # End configuration section.
 
 echo "$0 $@"  # Print the command line for logging.
@@ -166,14 +167,16 @@ else
   #    || exit 1;
 
   # making yaapt pitch
-  echo "time for yaapt"
-  $cmd JOB=1:$nj $logdir/make_pitch_yaapt_${name}.JOB.log \
-    local/featex/make_pitch_yaapt.sh $logdir/wav_${name}.JOB.scp \
-      ${yaapt_pitch_dir} $logdir/tmpwav_${name}.JOB.wav \
-      || exit 1;
+  if $yaapt_pitch; then
+    echo "time for yaapt"
+    $cmd JOB=1:$nj $logdir/make_pitch_yaapt_${name}.JOB.log \
+      local/featex/make_pitch_yaapt.sh $logdir/wav_${name}.JOB.scp \
+        ${yaapt_pitch_dir} $logdir/tmpwav_${name}.JOB.wav \
+        || exit 1;
+    rm $logdir/tmpwav_${name}.*.wav
+  fi
 fi
 
-rm $logdir/tmpwav_${name}.*.wav
 
 if [ -f $logdir/.error.$name ]; then
   echo "$0: Error producing pitch features for $name:"

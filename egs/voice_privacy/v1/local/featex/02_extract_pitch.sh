@@ -17,6 +17,7 @@ fi
 
 data_dir=$1
 pitch_dir=${data_dir}/pitch
+yaapt_pitch=false
 
-local/featex/make_pitch.sh --nj $nj --cmd "$train_cmd" ${data_dir} \
-	exp/make_pitch ${pitch_dir}
+local/featex/make_pitch.sh --nj $nj --cmd "$train_cmd" --yaapt-pitch ${yaapt_pitch} \
+	${data_dir} exp/make_pitch ${pitch_dir} || exit 1;

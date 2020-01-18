@@ -21,24 +21,18 @@ anoni_pool="libritts_train_other_500" # change this to the data you want to use 
 data_netcdf=/home/bsrivast/asr_data/LibriTTS/am_nsf_data # change this to dir where VC features data will be stored
 
 # Chain model for PPG extraction
-ivec_extractor=exp/asr_ppg_model/nnet3_cleaned/extractor # change this to the ivector extractor trained by chain models
-ivec_data_dir=exp/asr_ppg_model/nnet3_cleaned # change this to the directory where ivectors will stored for your data
-
-tree_dir=exp/asr_ppg_model/chain_cleaned/tree_sp # change this to tree dir of your chain model
-model_dir=exp/asr_ppg_model/chain_cleaned/tdnn_1d_sp # change this to your pretrained chain model
-lang_dir=exp/asr_ppg_model/lang_chain # change this to the land dir of your chain model
-
-ppg_dir=exp/asr_ppg_model/nnet3_cleaned # change this to the dir where PPGs will be stored
+ppg_type="346" # 256 or 346, as a string
+ppg_model=exp/asr_ppg_model_${ppg_type} # change this to the PPG extractor trained using chain models
+ppg_dir=${ppg_model}/nnet3_cleaned # change this to the dir where PPGs will be stored
 
 # x-vector extraction
 xvec_nnet_dir=exp/0007_voxceleb_v2_1a/exp/xvector_nnet_1a # change this to pretrained xvector model downloaded from Kaldi website
 anon_xvec_out_dir=${xvec_nnet_dir}/anon
-
 plda_dir=${xvec_nnet_dir}/xvectors_train
 
 pseudo_xvec_rand_level=spk  # spk (all utterances will have same xvector) or utt (each utterance will have randomly selected xvector)
-cross_gender="false"        # true, same gender xvectors will be selected; false, other gender xvectors
-distance="cosine"             # cosine or plda
+cross_gender="true"        # true, same gender xvectors will be selected; false, other gender xvectors
+distance="plda"             # cosine or plda
 proximity="farthest"         # nearest or farthest, should the farthest or nearest speakers must be selected during anonymization
 
 eval1_enroll=eval1_enroll
@@ -46,7 +40,7 @@ eval1_trial=eval1_trial
 eval2_enroll=eval2_enroll
 eval2_trial=eval2_trial
 
-anon_data_suffix=_anon_${pseudo_xvec_rand_level}_${cross_gender}_${distance}_${proximity}
+anon_data_suffix="_ppg_${ppg_type}_level_${pseudo_xvec_rand_level}_crossgender_${cross_gender}_distance_${distance}_proximity_${proximity}"
 score_dist_dir=exp/score_dist
 
 #=========== end config ===========
@@ -93,10 +87,9 @@ if [ $stage -le 2 ]; then
   #for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
   for name in $eval1_enroll $eval1_trial; do
   #for name in $eval1_enroll; do
-    local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
-	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
-	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
-	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
+    local/anon/anonymize_data_dir.sh --nj $nj --stage 3 --anoni-pool ${anoni_pool} \
+	 --data-netcdf ${data_netcdf} \
+	 --ppg-model ${ppg_model} --ppg-dir ${ppg_dir} --ppg-type ${ppg_type} \
 	 --xvec-nnet-dir ${xvec_nnet_dir} \
 	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
 	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} --distance ${distance} \
@@ -131,12 +124,11 @@ if [ $stage -le 4 ]; then
   local/data_prep_adv.sh ${librispeech_corpus}/dev-other data/dev_other
   
   local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
-	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
-	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
-	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
+	 --data-netcdf ${data_netcdf} \
+	 --ppg-model ${ppg_model} --ppg-dir ${ppg_dir} --ppg-type ${ppg_type} \
 	 --xvec-nnet-dir ${xvec_nnet_dir} \
 	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
-	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level}  --distance ${distance} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} --distance ${distance} \
 	 --proximity ${proximity} \
 	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
 	 dev_other || exit 1;
@@ -171,12 +163,11 @@ if [ $stage -le 6 ] && false; then
   local/data_prep_adv.sh ${librispeech_corpus}/train-clean-360 data/train_clean_360
   
   local/anon/anonymize_data_dir.sh --nj $nj --stage 4 --anoni-pool ${anoni_pool} \
-	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
-	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
-	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
+	 --data-netcdf ${data_netcdf} \
+	 --ppg-model ${ppg_model} --ppg-dir ${ppg_dir} --ppg-type ${ppg_type} \
 	 --xvec-nnet-dir ${xvec_nnet_dir} \
 	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
-	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level}  --distance ${distance} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} --distance ${distance} \
 	 --proximity ${proximity} \
 	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
 	 train_clean_360 || exit 1;
@@ -189,12 +180,11 @@ if [ $stage -le 7 ]; then
   local/data_prep_adv.sh ${librispeech_corpus}/test-clean data/test_clean
   
   local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
-	 --data-netcdf ${data_netcdf} --ivec-extractor ${ivec_extractor} \
-	 --ivec-data-dir ${ivec_data_dir} --tree-dir ${tree_dir} \
-	 --model-dir ${model_dir} --lang-dir ${lang_dir} --ppg-dir ${ppg_dir} \
+	 --data-netcdf ${data_netcdf} \
+	 --ppg-model ${ppg_model} --ppg-dir ${ppg_dir} --ppg-type ${ppg_type} \
 	 --xvec-nnet-dir ${xvec_nnet_dir} \
 	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
-	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level}  --distance ${distance} \
+	 --pseudo-xvec-rand-level ${pseudo_xvec_rand_level} --distance ${distance} \
 	 --proximity ${proximity} \
 	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
 	 test_clean || exit 1;
