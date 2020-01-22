@@ -41,12 +41,13 @@ plt.plot(nontgt_scores, fit_nontgt, '-r')
 plt.hist(nontgt_scores, bins=20, normed=True)
 
 sp = save_file.split('_')
-title = "PPG type = "+sp[-9]
-title = title+", Rand level = "+sp[-7]
-title = title+", Cross-gender ="+sp[-5]
-title = title+", Distance = "+sp[-3]
-title = title+", Proximity = "+sp[-1]
-plt.title(title+'.')
+if len(sp) > 9:
+    title = "PPG type = "+sp[-9]
+    title = title+", Rand level = "+sp[-7]
+    title = title+", Cross-gender ="+sp[-5]
+    title = title+", Distance = "+sp[-3]
+    title = title+", Proximity = "+sp[-1]
+    plt.title(title+'.')
 
 plt.savefig(save_file, dpi=300)
 

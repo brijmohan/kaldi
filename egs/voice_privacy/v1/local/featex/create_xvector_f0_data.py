@@ -23,17 +23,17 @@ for key, mat in kaldi_io.read_mat_scp(pitch_file):
     kaldi_f0 = mat[:, 1].squeeze().copy()
 
     # For Kaldi+YAAPT f0 integration
-    #yaapt_f0 = readwrite.read_raw_mat(join(yaap_pitch_dir, key+'.f0'), 1)
+    yaapt_f0 = readwrite.read_raw_mat(join(yaap_pitch_dir, key+'.f0'), 1)
     #unvoiced = np.where(yaapt_f0 == 0)[0]
     #kaldi_f0[unvoiced] = 0
     #readwrite.write_raw_mat(kaldi_f0, join(pitch_out_dir, key+'.f0'))
     
     # For just YAAPT f0
-    #f0 = np.zeros(kaldi_f0.shape)
-    #f0[:yaapt_f0.shape[0]] = yaapt_f0
-    #readwrite.write_raw_mat(f0, join(pitch_out_dir, key+'.f0'))
+    f0 = np.zeros(kaldi_f0.shape)
+    f0[:yaapt_f0.shape[0]] = yaapt_f0
+    readwrite.write_raw_mat(f0, join(pitch_out_dir, key+'.f0'))
 
-    readwrite.write_raw_mat(kaldi_f0, join(pitch_out_dir, key+'.f0'))
+    #readwrite.write_raw_mat(kaldi_f0, join(pitch_out_dir, key+'.f0'))
 
 
 # Write xvector features
