@@ -1,0 +1,195 @@
+#!/bin/bash
+# Copyright      2017   David Snyder
+#                2017   Johns Hopkins University (Author: Daniel Garcia-Romero)
+#                2017   Johns Hopkins University (Author: Daniel Povey)
+# Apache 2.0.
+#
+# See README.txt for more info on data required.
+# Results (mostly EERs) are inline in comments below.
+#
+# This example demonstrates a "bare bones" NIST SRE 2016 recipe using xvectors.
+# It is closely based on "X-vectors: Robust DNN Embeddings for Speaker
+# Recognition" by Snyder et al.  In the future, we will add score-normalization
+# and a more effective form of PLDA domain adaptation.
+#
+# Pretrained models are available for this recipe.  See
+# http://kaldi-asr.org/models.html and
+# https://david-ryan-snyder.github.io/2017/10/04/model_sre16_v2.html
+# for details.
+
+. ./cmd.sh
+. ./path.sh
+set -e
+mfccdir=`pwd`/mfcc
+vaddir=`pwd`/mfcc
+
+data=/home/bsrivastava/asr_data
+# base url for downloads.
+data_url=www.openslr.org/resources/12
+
+# SRE16 trials
+sre16_trials=data/test_clean_trial/trials
+sre16_trials_tgl=data/test_clean_trial/trials_male
+sre16_trials_yue=data/test_clean_trial/trials_female
+nnet_dir=exp/xvector_nnet_1a_100h_rm457
+nnet_egs_dir=$nnet_dir/egs
+
+train_data=train_clean_100
+train_plda=train_clean_100
+enroll_data=test_clean_enroll
+trial_data=test_clean_trial
+
+stage=-1 # Run from stage 0 if data is already downloaded
+
+if [ $stage -le -1 ]; then
+  # download the data.  Note: we're using the 100 hour setup for
+  # now; later in the script we'll download more and use it to train neural
+  # nets.
+  for part in test-clean train-clean-100; do
+    local/download_and_untar.sh $data $data_url $part
+  done
+
+fi
+if [ $stage -le 0 ]; then
+
+  # format the data as Kaldi data directories
+  #for part in dev-clean test-clean dev-other test-other train-clean-100 train-clean-360 train-other-500; do
+  for part in train-clean-100; do
+    # use underscore-separated names in data directories.
+    local/data_prep_adv.sh $data/LibriSpeech/$part data/$(echo $part | sed s/-/_/g)
+  done
+
+  # Make enrollment and trial data
+  python local/make_librispeech_eval.py ./proto $data/LibriSpeech/test-clean
+  utils/utt2spk_to_spk2utt.pl data/test_clean_enroll/utt2spk > data/test_clean_enroll/spk2utt
+  utils/utt2spk_to_spk2utt.pl data/test_clean_trial/utt2spk > data/test_clean_trial/spk2utt
+fi
+
+nj=24
+if [ $stage -le 1 ]; then
+  # Make MFCCs and compute the energy-based VAD for each dataset
+  #for name in dev_clean test_clean dev_other test_other train_960 test_clean_enroll test_clean_trial; do
+  for name in train_clean_100 test_clean_enroll test_clean_trial; do
+    steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
+      data/${name} exp/make_mfcc $mfccdir
+    utils/fix_data_dir.sh data/${name}
+    sid/compute_vad_decision.sh --nj $nj --cmd "$train_cmd" \
+      data/${name} exp/make_vad $vaddir
+    utils/fix_data_dir.sh data/${name}
+  done
+fi
+
+# Now we prepare the features to generate examples for xvector training.
+if [ $stage -le 3 ]; then
+  # This script applies CMVN and removes nonspeech frames.  Note that this is somewhat
+  # wasteful, as it roughly doubles the amount of training data on disk.  After
+  # creating training examples, this can be removed.
+  local/nnet3/xvector/prepare_feats_for_egs.sh --nj $nj --cmd "$train_cmd" \
+	  data/${train_data} data/${train_data}_no_sil exp/${train_data}_no_sil
+  utils/fix_data_dir.sh data/${train_data}_no_sil
+
+  # Now, we need to remove features that are too short after removing silence
+  # frames.  We want atleast 5s (500 frames) per utterance.
+  min_len=500
+  mv data/${train_data}_no_sil/utt2num_frames data/${train_data}_no_sil/utt2num_frames.bak
+  awk -v min_len=${min_len} '$2 > min_len {print $1, $2}' data/${train_data}_no_sil/utt2num_frames.bak > data/${train_data}_no_sil/utt2num_frames
+  utils/filter_scp.pl data/${train_data}_no_sil/utt2num_frames data/${train_data}_no_sil/utt2spk > data/${train_data}_no_sil/utt2spk.new
+  mv data/${train_data}_no_sil/utt2spk.new data/${train_data}_no_sil/utt2spk
+  utils/fix_data_dir.sh data/${train_data}_no_sil
+
+  # We also want several utterances per speaker. Now we'll throw out speakers
+  # with fewer than 8 utterances.
+  min_num_utts=8
+  awk '{print $1, NF-1}' data/${train_data}_no_sil/spk2utt > data/${train_data}_no_sil/spk2num
+  awk -v min_num_utts=${min_num_utts} '$2 >= min_num_utts {print $1, $2}' data/${train_data}_no_sil/spk2num | utils/filter_scp.pl - data/${train_data}_no_sil/spk2utt > data/${train_data}_no_sil/spk2utt.new
+  mv data/${train_data}_no_sil/spk2utt.new data/${train_data}_no_sil/spk2utt
+  utils/spk2utt_to_utt2spk.pl data/${train_data}_no_sil/spk2utt > data/${train_data}_no_sil/utt2spk
+
+  utils/filter_scp.pl data/${train_data}_no_sil/utt2spk data/${train_data}_no_sil/utt2num_frames > data/${train_data}_no_sil/utt2num_frames.new
+  mv data/${train_data}_no_sil/utt2num_frames.new data/${train_data}_no_sil/utt2num_frames
+
+  # Now we're ready to create training examples.
+  utils/fix_data_dir.sh data/${train_data}_no_sil
+fi
+
+
+xvector_train_data=${train_data}_no_sil
+
+local/nnet3/xvector/run_xvector_rm457.sh --stage $stage --train-stage -1 \
+  --data data/${xvector_train_data} --nnet-dir $nnet_dir \
+  --egs-dir $nnet_egs_dir
+
+nj=24
+
+if [ $stage -le 8 ]; then
+  # The SRE16 major is an unlabeled dataset consisting of Cantonese and
+  # and Tagalog.  This is useful for things like centering, whitening and
+  # score normalization.
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
+    $nnet_dir data/${xvector_train_data} \
+    exp/xvectors_${xvector_train_data}
+
+  # Extract xvectors for SRE data (includes Mixer 6). We'll use this for
+  # things like LDA or PLDA.
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 12G" --nj $nj \
+    $nnet_dir data/${train_plda} \
+    exp/xvectors_${train_plda}
+
+  # The SRE16 test data
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
+    $nnet_dir data/${trial_data} \
+    exp/xvectors_${trial_data}
+
+  # The SRE16 enroll data
+  sid/nnet3/xvector/extract_xvectors.sh --cmd "$train_cmd --mem 6G" --nj $nj \
+    $nnet_dir data/${enroll_data} \
+    exp/xvectors_${enroll_data}
+fi
+
+if [ $stage -le 9 ]; then
+  # Compute the mean vector for centering the evaluation xvectors.
+  $train_cmd exp/xvectors_${xvector_train_data}/log/compute_mean.log \
+    ivector-mean scp:exp/xvectors_${xvector_train_data}/xvector.scp \
+    exp/xvectors_${xvector_train_data}/mean.vec || exit 1;
+
+  # This script uses LDA to decrease the dimensionality prior to PLDA.
+  lda_dim=150
+  $train_cmd exp/xvectors_${train_plda}/log/lda.log \
+    ivector-compute-lda --total-covariance-factor=0.0 --dim=$lda_dim \
+    "ark:ivector-subtract-global-mean scp:exp/xvectors_${train_plda}/xvector.scp ark:- |" \
+    ark:data/${train_plda}/utt2spk exp/xvectors_${train_plda}/transform.mat || exit 1;
+
+  # Train an out-of-domain PLDA model.
+  $train_cmd exp/xvectors_${train_plda}/log/plda.log \
+    ivector-compute-plda ark:data/${train_plda}/spk2utt \
+    "ark:ivector-subtract-global-mean scp:exp/xvectors_${train_plda}/xvector.scp ark:- | transform-vec exp/xvectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:-  ark:- |" \
+    exp/xvectors_${train_plda}/plda || exit 1;
+fi
+
+
+if [ $stage -le 10 ]; then
+  # Get results using the out-of-domain PLDA model.
+  $train_cmd exp/scores/log/erep_eval_scoring.log \
+    ivector-plda-scoring --normalize-length=true \
+    --num-utts=ark:exp/xvectors_${enroll_data}/num_utts.ark \
+    "ivector-copy-plda --smoothing=0.0 exp/xvectors_${train_plda}/plda - |" \
+    "ark:ivector-mean ark:data/${enroll_data}/spk2utt scp:exp/xvectors_${enroll_data}/xvector.scp ark:- | ivector-subtract-global-mean exp/xvectors_${xvector_train_data}/mean.vec ark:- ark:- | transform-vec exp/xvectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "ark:ivector-subtract-global-mean exp/xvectors_${xvector_train_data}/mean.vec scp:exp/xvectors_${trial_data}/xvector.scp ark:- | transform-vec exp/xvectors_${train_plda}/transform.mat ark:- ark:- | ivector-normalize-length ark:- ark:- |" \
+    "cat '$sre16_trials' | cut -d\  --fields=1,2 |" exp/scores/erep_eval_scores || exit 1;
+
+  utils/filter_scp.pl $sre16_trials_tgl exp/scores/erep_eval_scores > exp/scores/erep_eval_tgl_scores
+  utils/filter_scp.pl $sre16_trials_yue exp/scores/erep_eval_scores > exp/scores/erep_eval_yue_scores
+  pooled_eer=$(paste $sre16_trials exp/scores/erep_eval_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  tgl_eer=$(paste $sre16_trials_tgl exp/scores/erep_eval_tgl_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  yue_eer=$(paste $sre16_trials_yue exp/scores/erep_eval_yue_scores | awk '{print $6, $3}' | compute-eer - 2>/dev/null)
+  echo "EER: Pooled ${pooled_eer}%, Male ${tgl_eer}%, Female ${yue_eer}%"
+  # EER: Pooled 11.73%, Tagalog 15.96%, Cantonese 7.52%
+  # For reference, here's the ivector system from ../v1:
+  # EER: Pooled 13.65%, Tagalog 17.73%, Cantonese 9.61%
+fi
+
+
+if [ $stage -le 12 ]; then
+    python local/plot_trial_score_dist.py $sre16_trials exp/scores/erep_eval_scores_adapt data/$trial_data/xvector_score_dist.png 
+    echo "Plot saved as:" data/$trial_data/xvector_score_dist.png
+fi
