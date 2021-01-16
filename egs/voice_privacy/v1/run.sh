@@ -12,7 +12,7 @@ export LC_ALL=C
 
 #===== begin config =======
 nj=20
-stage=7
+stage=2
 
 librispeech_corpus=/home/bsrivast/asr_data/LibriSpeech
 libritts_corpus=/home/bsrivast/asr_data/LibriTTS/LibriTTS
@@ -31,10 +31,11 @@ xvec_nnet_dir=exp/xvec_extractor/xvector_nnet_1a # change this to pretrained xve
 anon_xvec_out_dir=${xvec_nnet_dir}/anon
 
 # ASV_eval configs
-#asv_eval_model=exp/asv_eval_model
-#plda_dir=${asv_eval_model}/xvect_train_clean_360
-asv_eval_model=exp/asv_eval_model_pitch
-plda_dir=${asv_eval_model}/xvectors_train
+asv_eval_model=exp/asv_eval_model
+plda_dir=${asv_eval_model}/xvect_train_clean_360
+#asv_eval_model=exp/asv_eval_model_pitch
+#plda_dir=${asv_eval_model}/xvectors_train
+xvector_pitch=false
 
 # ASR_eval model
 asr_eval_model=exp/asr_eval_model
@@ -76,15 +77,16 @@ fi
 if [ $stage -le 1 ]; then
   printf "${GREEN}\nStage 1: Making evaluation data${NC}\n"
   local/make_eval1.sh proto/eval1 ${librispeech_corpus} ${eval1_enroll} ${eval1_trial}
-  local/make_eval2.py proto/eval2 ${librispeech_corpus} ${eval2_enroll} ${eval2_trial}
+  local/make_eval2.sh proto/eval2 ${librispeech_corpus} ${eval2_enroll} ${eval2_trial}
 fi
 
 # Extract xvectors from data which has to be anonymized
 if [ $stage -le 2 ]; then
   printf "${GREEN}\nStage 2: Anonymizing eval1 and eval2 data.${NC}\n"
   #for name in $eval1_enroll $eval1_trial $eval2_enroll $eval2_trial; do
-  for name in $eval1_enroll $eval1_trial; do
-  #for name in $eval1_enroll; do
+  #for name in $eval1_enroll $eval1_trial; do
+  : '
+  for name in $eval2_enroll $eval2_trial; do
     local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
 	 --data-netcdf ${data_netcdf} \
 	 --ppg-model ${ppg_model} --ppg-dir ${ppg_dir} --ppg-type ${ppg_type} \
@@ -95,32 +97,69 @@ if [ $stage -le 2 ]; then
 	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
 	 ${name} || exit 1;
   done
+  '
+    local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
+	 --data-netcdf ${data_netcdf} \
+	 --ppg-model ${ppg_model} --ppg-dir ${ppg_dir} --ppg-type ${ppg_type} \
+	 --xvec-nnet-dir ${xvec_nnet_dir} \
+	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
+	 --pseudo-xvec-rand-level utt --distance ${distance} \
+	 --proximity ${proximity} \
+	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
+	 ${eval2_enroll} || exit 1;
+    local/anon/anonymize_data_dir.sh --nj $nj --anoni-pool ${anoni_pool} \
+	 --data-netcdf ${data_netcdf} \
+	 --ppg-model ${ppg_model} --ppg-dir ${ppg_dir} --ppg-type ${ppg_type} \
+	 --xvec-nnet-dir ${xvec_nnet_dir} \
+	 --anon-xvec-out-dir ${anon_xvec_out_dir} --plda-dir ${plda_dir} \
+	 --pseudo-xvec-rand-level spk --distance ${distance} \
+	 --proximity ${proximity} \
+	 --cross-gender ${cross_gender} --anon-data-suffix ${anon_data_suffix} \
+	 ${eval2_trial} || exit 1;
 fi
 
 if [ $stage -le 3 ]; then
   printf "${GREEN}\nStage 3: Evaluate the dataset using speaker verification.${NC}\n"
-  printf "${RED}**Exp 0.1 baseline: Eval 1, enroll - original, trial - original**${NC}\n"
-  baseline_dist=${score_dist_dir}/${eval1_trial}_baseline.png
-  local/asv_eval.sh --stage 3 --score-dist ${baseline_dist} \
-	  --nnet-dir ${asv_eval_model} --plda-dir ${plda_dir} \
-	  ${eval1_enroll} ${eval1_trial} || exit 1;
-  #printf "${RED}**Exp 0.2 baseline: Eval 2, enroll - original, trial - original**${NC}\n"
-  #local/asv_eval.sh ${eval2_enroll} ${eval2_trial} || exit 1;
+  #printf "${RED}**Exp 0.1 baseline: Eval 1, enroll - original, trial - original**${NC}\n"
+  #baseline_dist=${score_dist_dir}/${eval1_trial}_baseline.png
+  #local/asv_eval.sh --score-dist ${baseline_dist} \
+  #	  --nnet-dir ${asv_eval_model} --plda-dir ${plda_dir} \
+  #	  --use-pitch ${xvector_pitch} \
+  #	  ${eval1_enroll} ${eval1_trial} || exit 1;
+  : '
+  printf "${RED}**Exp 0.2 baseline: Eval 2, enroll - original, trial - original**${NC}\n"
+  baseline_dist=${score_dist_dir}/${eval2_trial}_baseline.png
+  local/asv_eval.sh --score-dist ${baseline_dist} \
+  	  --nnet-dir ${asv_eval_model} --plda-dir ${plda_dir} \
+  	  --use-pitch ${xvector_pitch} \
+  	  ${eval2_enroll} ${eval2_trial} || exit 1;
+  '
+: '
   oa_dist_plot=${score_dist_dir}/${eval1_trial}${anon_data_suffix}_oa.png
   aa_dist_plot=${score_dist_dir}/${eval1_trial}${anon_data_suffix}_aa.png
   printf "${RED}**Exp 1: Eval 1, enroll - original, trial - anonymized**${NC}\n"
   local/asv_eval.sh --score-dist ${oa_dist_plot} --nnet-dir ${asv_eval_model} \
-	  --plda-dir ${plda_dir} ${eval1_enroll} ${eval1_trial}${anon_data_suffix} || exit 1;
+  	  --use-pitch ${xvector_pitch} \
+  	  --plda-dir ${plda_dir} ${eval1_enroll} ${eval1_trial}${anon_data_suffix} || exit 1;
   printf "${RED}**Exp 2: Eval 1, enroll - anonymized, trial - anonymized**${NC}\n"
   local/asv_eval.sh --score-dist ${aa_dist_plot} --nnet-dir ${asv_eval_model} \
-	 --plda-dir ${plda_dir} ${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
-  #printf "${RED}**Exp 3: Eval 2, enroll - original, trial - anonymized**${NC}\n"
-  #local/asv_eval.sh ${eval2_enroll} ${eval2_trial}${anon_data_suffix} || exit 1;
-  #printf "${RED}**Exp 4: Eval 2, enroll - anonymized, trial - anonymized**${NC}\n"
-  #local/asv_eval.sh ${eval2_enroll}${anon_data_suffix} ${eval2_trial}${anon_data_suffix} || exit 1;
+  	  --use-pitch ${xvector_pitch} \
+  	 --plda-dir ${plda_dir} ${eval1_enroll}${anon_data_suffix} ${eval1_trial}${anon_data_suffix} || exit 1;
+  '
+
+  oa_dist_plot=${score_dist_dir}/${eval2_trial}${anon_data_suffix}_oa.png
+  aa_dist_plot=${score_dist_dir}/${eval2_trial}${anon_data_suffix}_aa.png
+  printf "${RED}**Exp 3: Eval 2, enroll - original, trial - anonymized**${NC}\n"
+  local/asv_eval.sh --score-dist ${oa_dist_plot} --nnet-dir ${asv_eval_model} \
+  	  --use-pitch ${xvector_pitch} \
+  	  --plda-dir ${plda_dir} ${eval2_enroll} ${eval2_trial}${anon_data_suffix} || exit 1;
+  printf "${RED}**Exp 4: Eval 2, enroll - anonymized, trial - anonymized**${NC}\n"
+  local/asv_eval.sh --score-dist ${aa_dist_plot} --nnet-dir ${asv_eval_model} \
+  	  --use-pitch ${xvector_pitch} \
+  	 --plda-dir ${plda_dir} ${eval2_enroll}${anon_data_suffix} ${eval2_trial}${anon_data_suffix} || exit 1;
 fi
 
-#exit 0;
+exit 0;
 
 if [ $stage -le 4 ]; then
   printf "${GREEN}\nStage 4: Anonymizing adaptation data to adapt speaker verification PLDA.${NC}\n"

@@ -4,7 +4,7 @@
 # Set this to somewhere where you want to put your data, or where
 # someone else has already put it.  You'll want to change this
 # if you're not on the CLSP grid.
-data=/home/bsrivastava/asr_data
+data=/home/bsrivast/asr_data
 
 # base url for downloads.
 data_url=www.openslr.org/resources/12
@@ -35,7 +35,7 @@ fi
 
 if [ $stage -le 2 ]; then
   # format the data as Kaldi data directories
-  for part in dev-clean test-clean dev-other test-other train-clean-100; do
+  for part in dev-clean test-clean dev-other test-other train-clean-100 train-clean-360 train-other-500; do
     # use underscore-separated names in data directories.
     local/data_prep.sh $data/LibriSpeech/$part data/$(echo $part | sed s/-/_/g)
   done
@@ -84,14 +84,19 @@ if [ $stage -le 5 ]; then
   fi
 fi
 
-nj=32
+nj=40
 
 if [ $stage -le 6 ]; then
-  for part in dev_clean test_clean dev_other test_other train_clean_100; do
+  for part in dev_clean test_clean dev_other test_other train_clean_100 train_clean_360 train_other_500; do
     steps/make_mfcc.sh --cmd "$train_cmd" --nj $nj data/$part exp/make_mfcc/$part $mfccdir
     steps/compute_cmvn_stats.sh data/$part exp/make_mfcc/$part $mfccdir
   done
+
+  utils/combine_data.sh \
+    data/train_960 data/train_clean_100 data/train_clean_360 data/train_other_500
 fi
+
+#exit 0;
 
 if [ $stage -le 7 ]; then
   # Make some small data subsets for early system-build stages.  Note, there are 29k
@@ -406,8 +411,11 @@ if [ $stage -le 20 ]; then
   local/chain/run_tdnn.sh --stage 15 --train-stage 436 # set "--stage 11" if you have already run local/nnet3/run_tdnn.sh
 fi
 
+#exit 0;
+
 # The nnet3 TDNN recipe:
-local/nnet3/run_tdnn.sh --stage 12 --train-stage 508 --reporting-email "brij.srivastava@inria.fr" # set "--stage 11" if you have already run local/chain/run_tdnn.sh
+#local/nnet3/run_tdnn.sh --stage 12 --train-stage 508 --reporting-email "brij.srivastava@inria.fr" # set "--stage 11" if you have already run local/chain/run_tdnn.sh
+local/nnet3/run_tdnn.sh --stage 13 # set "--stage 11" if you have already run local/chain/run_tdnn.sh
 
 # # train models on cleaned-up data
 # # we've found that this isn't helpful-- see the comments in local/run_data_cleaning.sh

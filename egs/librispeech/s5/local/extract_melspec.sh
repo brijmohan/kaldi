@@ -3,9 +3,9 @@
 . path.sh
 . cmd.sh
 
-odata_dir=data/train_clean_460
-data_dir=data/train_clean_460_mspec
-nj=32
+odata_dir=data/libritts_train_clean_100
+data_dir=${odata_dir}_mspec
+nj=40
 mspec_dir=${data_dir}/mspec
 
 mspec_config=conf/mspec.conf

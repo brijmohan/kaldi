@@ -18,6 +18,7 @@ vaddir=`pwd`/mfcc
 nnet_dir=exp/0007_voxceleb_v2_1a/exp/xvector_nnet_1a # Pretrained model downloaded from Kaldi website
 plda_dir=${nnet_dir}/xvectors_train
 score_dist=
+use_pitch=false
 
 stage=1
 
@@ -50,8 +51,13 @@ if [ $stage -le 1 ]; then
 
   echo "Compute MFCC..."
   for name in $libri_enroll $libri_trials; do
-    steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
-      data/${name} exp/make_mfcc $mfccdir
+    if $use_pitch; then
+      steps/make_mfcc_pitch.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
+        data/${name} exp/make_mfcc $mfccdir
+    else
+      steps/make_mfcc.sh --write-utt2num-frames true --mfcc-config conf/mfcc.conf --nj $nj --cmd "$train_cmd" \
+        data/${name} exp/make_mfcc $mfccdir
+    fi
     
     utils/fix_data_dir.sh data/${name}
     

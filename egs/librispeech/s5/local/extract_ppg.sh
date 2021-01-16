@@ -3,7 +3,7 @@
 . path.sh
 . cmd.sh
 
-data=train_clean_460
+data=libritts_train_clean_100
 original_data_dir=data/${data}
 
 data_dir=data/${data}_hires
@@ -16,7 +16,7 @@ lang_dir=data/lang_chain
 
 ppg_dir=exp/nnet3_cleaned/ppg_wpd_fs1_${data}
 
-nj=32
+nj=40
 
 stage=2
 

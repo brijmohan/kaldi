@@ -14,7 +14,7 @@
 # First the options that are passed through to run_ivector_common.sh
 # (some of which are also used in this script directly).
 stage=0
-decode_nj=30
+decode_nj=10
 train_set=train_960_cleaned
 gmm=tri6b_cleaned  # this is the source gmm-dir for the data-type of interest; it
                    # should have alignments for the specified training data.
