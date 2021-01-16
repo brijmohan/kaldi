@@ -68,10 +68,10 @@ OnlineNnet2FeaturePipelineInfo::OnlineNnet2FeaturePipelineInfo(
   use_cmvn = (config.cmvn_config != "");
   if (use_cmvn) {
     ReadConfigFromFile(config.cmvn_config, &cmvn_opts);
-    global_cmvn_stats_rxfilename = config.global_cmvn_stats_rxfilename;
-    if (global_cmvn_stats_rxfilename == "")
+    if (config.global_cmvn_stats_rxfilename == "")
       KALDI_ERR << "--global-cmvn-stats option is required "
                 << " when --cmvn-config is specified.";
+    ReadKaldiObject(config.global_cmvn_stats_rxfilename, &global_cmvn_stats);
   }
 
   if (config.ivector_extraction_config != "") {
@@ -119,9 +119,11 @@ OnlineNnet2FeaturePipeline::OnlineNnet2FeaturePipeline(
   }
 
   if (info_.use_cmvn) {
-    KALDI_ASSERT(info.global_cmvn_stats_rxfilename != "");
-    ReadKaldiObject(info.global_cmvn_stats_rxfilename, &global_cmvn_stats_);
-    OnlineCmvnState initial_state(global_cmvn_stats_);
+    if (info_.global_cmvn_stats.NumCols() == 0) {
+      KALDI_ERR << "global_cmvn_stats for OnlineCmvn must be non-empty, "
+                << "please assign it to OnlineNnet2FeaturePipelineInfo.";
+    }
+    OnlineCmvnState initial_state(info_.global_cmvn_stats);
     cmvn_feature_ = new OnlineCmvn(info_.cmvn_opts, initial_state,
         feature_plus_optional_pitch_);
     feature_plus_optional_cmvn_ = cmvn_feature_;
@@ -241,5 +243,17 @@ BaseFloat OnlineNnet2FeaturePipelineInfo::FrameShiftInSeconds() const {
   }
 }
 
+BaseFloat OnlineNnet2FeaturePipelineInfo::GetSamplingFrequency() {
+  if (feature_type == "mfcc") {
+    return mfcc_opts.frame_opts.samp_freq;
+  } else if (feature_type == "plp") {
+    return plp_opts.frame_opts.samp_freq;
+  } else if (feature_type == "fbank") {
+    return fbank_opts.frame_opts.samp_freq;
+  } else {
+    KALDI_ERR << "Unknown feature type " << feature_type;
+  }
+  return 0.0f; // avoiding a possible "return missing" warning
+}
 
 }  // namespace kaldi

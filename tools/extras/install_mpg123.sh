@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright 2015 Johns Hopkins University (author: Jan Trmal)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,7 +14,7 @@
 # See the Apache 2 License for the specific language governing permissions and
 # limitations under the License.
 #
-# This script attempts to install mpg123, which can be used for decoding 
+# This script attempts to install mpg123, which can be used for decoding
 # mp2 and mp3 file formats.
 
 VERSION=1.21.0

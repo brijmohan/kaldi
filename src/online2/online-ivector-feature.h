@@ -33,6 +33,7 @@
 #include "feat/online-feature.h"
 #include "ivector/ivector-extractor.h"
 #include "decoder/lattice-faster-online-decoder.h"
+#include "decoder/lattice-incremental-online-decoder.h"
 
 namespace kaldi {
 /// @addtogroup  onlinefeat OnlineFeatureExtraction
@@ -192,6 +193,8 @@ struct OnlineIvectorExtractionInfo {
   OnlineIvectorExtractionInfo(const OnlineIvectorExtractionConfig &config);
 
   void Init(const OnlineIvectorExtractionConfig &config);
+
+  int32 ExpectedFeatureDim() const;
 
   // This constructor creates a version of this object where everything
   // is empty or zero.
@@ -479,7 +482,11 @@ class OnlineSilenceWeighting {
   // the decoder using its BestPathEnd() and related functions.
   // It will be instantiated for FST == fst::Fst<fst::StdArc> and fst::GrammarFst.
   template <typename FST>
-  void ComputeCurrentTraceback(const LatticeFasterOnlineDecoderTpl<FST> &decoder);
+  void ComputeCurrentTraceback(const LatticeFasterOnlineDecoderTpl<FST> &decoder,
+                               bool use_final_probs = false);
+  template <typename FST>
+  void ComputeCurrentTraceback(const LatticeIncrementalOnlineDecoderTpl<FST> &decoder,
+                               bool use_final_probs = false);
 
   // Calling this function gets the changes in weight that require us to modify
   // the stats... the output format is (frame-index, delta-weight).
@@ -516,6 +523,13 @@ class OnlineSilenceWeighting {
       std::vector<std::pair<int32, BaseFloat> > *delta_weights) {
     GetDeltaWeights(num_frames_ready, 0, delta_weights);
   }
+
+  // Gets a list of nonsilence frames collected on traceback. Useful
+  // for algorithms to extract speaker properties like speaker identification
+  // vectors.
+  void GetNonsilenceFrames(
+      int32 num_frames_ready, int32 first_decoder_frame,
+      std::vector<int32> *frames);
 
  private:
   const TransitionModel &trans_model_;
