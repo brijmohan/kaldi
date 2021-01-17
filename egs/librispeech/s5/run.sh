@@ -300,7 +300,6 @@ fi
 #exit 0;
 
 # The nnet3 TDNN recipe:
-#local/nnet3/run_tdnn.sh --stage 12 --train-stage 508 --reporting-email "brij.srivastava@inria.fr" # set "--stage 11" if you have already run local/chain/run_tdnn.sh
 local/nnet3/run_tdnn.sh --stage 13 # set "--stage 11" if you have already run local/chain/run_tdnn.sh
 
 # # train models on cleaned-up data
