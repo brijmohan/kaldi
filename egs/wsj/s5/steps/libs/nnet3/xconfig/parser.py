@@ -30,6 +30,8 @@ config_to_layer = {
         'batchnorm-layer' : xlayers.XconfigBasicLayer,
         'sigmoid-layer' : xlayers.XconfigBasicLayer,
         'tanh-layer' : xlayers.XconfigBasicLayer,
+        'gnoise-layer' : xlayers.XconfigBasicLayer,
+        'lnoise-layer' : xlayers.XconfigBasicLayer,
         'fixed-affine-layer' : xlayers.XconfigFixedAffineLayer,
         'idct-layer' : xlayers.XconfigIdctLayer,
         'affine-layer' : xlayers.XconfigAffineLayer,

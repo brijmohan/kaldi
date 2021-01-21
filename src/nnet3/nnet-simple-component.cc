@@ -235,6 +235,238 @@ void DropoutComponent::Write(std::ostream &os, bool binary) const {
   WriteToken(os, binary, "</DropoutComponent>");
 }
 
+AdditiveGNoiseComponent::AdditiveGNoiseComponent(const AdditiveGNoiseComponent &other):
+    RandomComponent(other),
+    dim_(other.dim_),
+    stddev_(other.stddev_) { }
+
+Component* AdditiveGNoiseComponent::Copy() const {
+  AdditiveGNoiseComponent *ans = new AdditiveGNoiseComponent(*this);
+  return ans;
+}
+
+void AdditiveGNoiseComponent::Init(int32 dim, BaseFloat stddev) {
+  stddev_ = stddev;
+  dim_ = dim;
+}
+
+void AdditiveGNoiseComponent::InitFromConfig(ConfigLine *cfl) {
+  int32 dim = 0;
+  BaseFloat stddev = 0.0;
+  test_mode_ = false;
+  bool ok = cfl->GetValue("dim", &dim) &&
+    cfl->GetValue("stddev", &stddev);
+  // It only makes sense to set test-mode in the config for testing purposes.
+  cfl->GetValue("test-mode", &test_mode_);
+    // for this stage, dropout is hard coded in
+    // normal mode if not declared in config
+  if (!ok || cfl->HasUnusedValues() || dim <= 0 || stddev < 0.0)
+       KALDI_ERR << "Invalid initializer for layer of type "
+                 << Type() << ": \"" << cfl->WholeLine() << "\"";
+  Init(dim, stddev);
+}
+
+std::string AdditiveGNoiseComponent::Info() const {
+  std::ostringstream stream;
+  stream << Type() << ", dim=" << dim_
+         << ", stddev=" << stddev_;
+  return stream.str();
+}
+
+void* AdditiveGNoiseComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
+                                 const CuMatrixBase<BaseFloat> &in,
+                                 CuMatrixBase<BaseFloat> *out) const {
+  KALDI_ASSERT(out->NumRows() == in.NumRows() && out->NumCols() == in.NumCols()
+               && in.NumCols() == dim_);
+
+  BaseFloat stddev = stddev_;
+  KALDI_ASSERT(stddev >= 0.0);
+  /*
+  if (test_mode_) {
+    out->CopyFromMat(in);
+    return NULL;
+  }
+  */
+  out->CopyFromMat(in);
+  CuMatrix<BaseFloat> rand(in.NumRows(), in.NumCols());
+  const_cast<CuRand<BaseFloat>&>(random_generator_).RandGaussian(&rand);
+  out->AddMat(stddev_, rand);
+  return NULL;
+}
+
+
+void AdditiveGNoiseComponent::Backprop(const std::string &debug_info,
+                                const ComponentPrecomputedIndexes *indexes,
+                                const CuMatrixBase<BaseFloat> &in_value,
+                                const CuMatrixBase<BaseFloat> &out_value,
+                                const CuMatrixBase<BaseFloat> &out_deriv,
+                                void *memo,
+                                Component *to_update,
+                                CuMatrixBase<BaseFloat> *in_deriv) const {
+  NVTX_RANGE("AdditiveGNoiseComponent::Backprop");
+  KALDI_ASSERT(in_value.NumRows() == out_value.NumRows() &&
+               in_value.NumCols() == out_value.NumCols());
+
+  KALDI_ASSERT(in_value.NumRows() == out_deriv.NumRows() &&
+               in_value.NumCols() == out_deriv.NumCols());
+  in_deriv->SetMatMatDivMat(out_deriv, out_value, in_value);
+}
+
+
+
+void AdditiveGNoiseComponent::Read(std::istream &is, bool binary) {
+  std::string token;
+  ReadToken(is, binary, &token);
+  if (token == "<AdditiveGNoiseComponent>") {
+    ReadToken(is, binary, &token);
+  }
+  KALDI_ASSERT(token == "<Dim>");
+  ReadBasicType(is, binary, &dim_);  // read dimension.
+  ReadToken(is, binary, &token);
+  KALDI_ASSERT(token == "<Stddev>");
+  ReadBasicType(is, binary, &stddev_);  // read standard deviation
+  ReadToken(is, binary, &token);
+  if (token == "<TestMode>") {
+    ReadBasicType(is, binary, &test_mode_);  // read test mode
+    ExpectToken(is, binary, "</AdditiveGNoiseComponent>");
+  } else {
+    test_mode_ = false;
+    KALDI_ASSERT(token == "</AdditiveGNoiseComponent>");
+  }
+}
+
+void AdditiveGNoiseComponent::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<AdditiveGNoiseComponent>");
+  WriteToken(os, binary, "<Dim>");
+  WriteBasicType(os, binary, dim_);
+  WriteToken(os, binary, "<Stddev>");
+  WriteBasicType(os, binary, stddev_);
+  WriteToken(os, binary, "<TestMode>");
+  WriteBasicType(os, binary, test_mode_);
+  WriteToken(os, binary, "</AdditiveGNoiseComponent>");
+}
+
+// Additive Laplacian Noise Component
+AdditiveLNoiseComponent::AdditiveLNoiseComponent(const AdditiveLNoiseComponent &other):
+    RandomComponent(other),
+    dim_(other.dim_),
+    scale_(other.scale_) { }
+
+Component* AdditiveLNoiseComponent::Copy() const {
+  AdditiveLNoiseComponent *ans = new AdditiveLNoiseComponent(*this);
+  return ans;
+}
+
+void AdditiveLNoiseComponent::Init(int32 dim, BaseFloat scale) {
+  scale_ = scale;
+  dim_ = dim;
+}
+
+void AdditiveLNoiseComponent::InitFromConfig(ConfigLine *cfl) {
+  int32 dim = 0;
+  BaseFloat scale = 0.0;
+  test_mode_ = false;
+  bool ok = cfl->GetValue("dim", &dim) &&
+    cfl->GetValue("scale", &scale);
+  // It only makes sense to set test-mode in the config for testing purposes.
+  cfl->GetValue("test-mode", &test_mode_);
+    // for this stage, dropout is hard coded in
+    // normal mode if not declared in config
+  if (!ok || cfl->HasUnusedValues() || dim <= 0 || scale < 0.0)
+       KALDI_ERR << "Invalid initializer for layer of type "
+                 << Type() << ": \"" << cfl->WholeLine() << "\"";
+  Init(dim, scale);
+}
+
+std::string AdditiveLNoiseComponent::Info() const {
+  std::ostringstream stream;
+  stream << Type() << ", dim=" << dim_
+         << ", scale=" << scale_;
+  return stream.str();
+}
+
+void* AdditiveLNoiseComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
+                                 const CuMatrixBase<BaseFloat> &in,
+                                 CuMatrixBase<BaseFloat> *out) const {
+  KALDI_ASSERT(out->NumRows() == in.NumRows() && out->NumCols() == in.NumCols()
+               && in.NumCols() == dim_);
+
+  BaseFloat scale = scale_;
+  KALDI_ASSERT(scale >= 0.0);
+  /*
+  if (test_mode_) {
+    out->CopyFromMat(in);
+    return NULL;
+  }
+  */
+  out->CopyFromMat(in);
+  CuMatrix<BaseFloat> rand1(in.NumRows(), in.NumCols());
+  CuMatrix<BaseFloat> rand2(in.NumRows(), in.NumCols());
+  // How to get Laplace distribution using uniform distribution
+  // https://math.stackexchange.com/questions/595900/laplace-distribution-from-uniform-distrubtion
+  // https://dzone.com/articles/generating-laplace-distributed-random-values
+  const_cast<CuRand<BaseFloat>&>(random_generator_).RandUniform(&rand1);
+  const_cast<CuRand<BaseFloat>&>(random_generator_).RandUniform(&rand2);
+  rand1.ApplyLog();
+  rand2.ApplyLog();
+  rand2.AddMat(-1.0, rand1);
+  out->AddMat(scale_, rand2);
+  return NULL;
+}
+
+
+void AdditiveLNoiseComponent::Backprop(const std::string &debug_info,
+                                const ComponentPrecomputedIndexes *indexes,
+                                const CuMatrixBase<BaseFloat> &in_value,
+                                const CuMatrixBase<BaseFloat> &out_value,
+                                const CuMatrixBase<BaseFloat> &out_deriv,
+                                void *memo,
+                                Component *to_update,
+                                CuMatrixBase<BaseFloat> *in_deriv) const {
+  NVTX_RANGE("AdditiveLNoiseComponent::Backprop");
+  KALDI_ASSERT(in_value.NumRows() == out_value.NumRows() &&
+               in_value.NumCols() == out_value.NumCols());
+
+  KALDI_ASSERT(in_value.NumRows() == out_deriv.NumRows() &&
+               in_value.NumCols() == out_deriv.NumCols());
+  in_deriv->SetMatMatDivMat(out_deriv, out_value, in_value);
+}
+
+
+
+void AdditiveLNoiseComponent::Read(std::istream &is, bool binary) {
+  std::string token;
+  ReadToken(is, binary, &token);
+  if (token == "<AdditiveLNoiseComponent>") {
+    ReadToken(is, binary, &token);
+  }
+  KALDI_ASSERT(token == "<Dim>");
+  ReadBasicType(is, binary, &dim_);  // read dimension.
+  ReadToken(is, binary, &token);
+  KALDI_ASSERT(token == "<Scale>");
+  ReadBasicType(is, binary, &scale_);  // read standard deviation
+  ReadToken(is, binary, &token);
+  if (token == "<TestMode>") {
+    ReadBasicType(is, binary, &test_mode_);  // read test mode
+    ExpectToken(is, binary, "</AdditiveLNoiseComponent>");
+  } else {
+    test_mode_ = false;
+    KALDI_ASSERT(token == "</AdditiveLNoiseComponent>");
+  }
+}
+
+void AdditiveLNoiseComponent::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<AdditiveLNoiseComponent>");
+  WriteToken(os, binary, "<Dim>");
+  WriteBasicType(os, binary, dim_);
+  WriteToken(os, binary, "<Scale>");
+  WriteBasicType(os, binary, scale_);
+  WriteToken(os, binary, "<TestMode>");
+  WriteBasicType(os, binary, test_mode_);
+  WriteToken(os, binary, "</AdditiveLNoiseComponent>");
+}
+
+
 void ElementwiseProductComponent::Init(int32 input_dim, int32 output_dim)  {
   input_dim_ = input_dim;
   output_dim_ = output_dim;
