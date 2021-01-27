@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright 2019   Phani Sankar Nidadavolu
 # Copyright 2019   manhong wang(marvin)
 # Apache 2.0.
@@ -58,7 +58,7 @@ done | sort -k1,1 > $dir/trans_out.scp.aug
 
 if [ "$include_original" == "true" ]; then
   cat $dir/trans_tmp.*.scp | awk '{print $0}' | sort -k1,1 > $dir/trans_out.scp.clean
-  cat $dir/trans_out.scp.clean $dir/trans_out.scp.aug | sort -k1,1 > $dir/trans_out.scp
+  cat $dir/trans_out.scp.clean $dir/trans_out.scp.aug | sort -k1,1 > $dir/trans_out.scp.old
 else
   cat $dir/trans_out.scp.aug | sort -k1,1 > $dir/trans_out.scp.old
 fi

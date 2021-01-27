@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright (c) 2015, Johns Hopkins University (Yenda Trmal <jtrmal@gmail.com>)
 # License: Apache 2.0
 
@@ -73,4 +73,4 @@ fi
 ) >> env.sh
 
 errcho "***() Installation of IRSTLM finished successfully"
-errcho "***() Please source the tools/extras/env.sh in your path.sh to enable it"
+errcho "***() Please source the tools/env.sh in your path.sh to enable it"

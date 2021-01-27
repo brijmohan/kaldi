@@ -1,9 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 GIT=${GIT:-git}
 
 # Installs nara-wpe with dependencies
-# miniconda should be installed in $HOME/miniconda3/ 
+# miniconda should be installed in $HOME/miniconda3/
 
 miniconda_dir=$HOME/miniconda3/
 

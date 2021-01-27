@@ -734,7 +734,10 @@ class XconfigBasicLayer(XconfigLayerBase):
                        'bias-stddev': '',
                        'l2-regularize': '',
                        'learning-rate-factor': '',
-                       'max-change': 0.75 }
+                       'max-change': 0.75,
+                       'gnoise-stddev': 0.0,
+                       'lnoise-sens': 0.0,
+                       'lnoise-eps': 1000000.0 }
 
     def check_configs(self):
         if self.config['dim'] < 0:
@@ -920,6 +923,21 @@ class XconfigBasicLayer(XconfigLayerBase):
                             'dim={1} dropout-proportion={2} {3}'.format(
                                 self.name, output_dim, self.config['dropout-proportion'],
                                 continuous_opt))
+            elif nonlinearity == 'gnoise':
+                line = ('component name={0}.{1} type=AdditiveGNoiseComponent '
+                        'dim={2} stddev={3}'.format(
+                            self.name, nonlinearity, output_dim,
+                            self.config['gnoise-stddev']))
+            elif nonlinearity == 'lnoise':
+                line = ('component name={0}.{1} type=AdditiveLNoiseComponent '
+                        'dim={2} sens={3} eps={4}'.format(
+                            self.name, nonlinearity, output_dim,
+                            self.config['lnoise-sens'],
+                            self.config['lnoise-eps']))
+            elif nonlinearity == 'l1norm':
+                line = ('component name={0}.{1} type=L1NormComponent '
+                        'dim={2}'.format(
+                            self.name, nonlinearity, output_dim))
             else:
                 raise RuntimeError("Unknown nonlinearity type: {0}"
                                    .format(nonlinearity))

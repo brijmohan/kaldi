@@ -150,6 +150,182 @@ class DropoutComponent : public RandomComponent {
   bool dropout_per_frame_;
 };
 
+// This component adds random Gaussian noise to a layer
+// with fixed stddev
+class AdditiveGNoiseComponent : public RandomComponent {
+ public:
+  void Init(int32 dim, BaseFloat stddev = 0.0);
+
+  AdditiveGNoiseComponent(int32 dim, BaseFloat stddev = 0.0) {
+    Init(dim, stddev);
+  }
+
+  AdditiveGNoiseComponent(): dim_(0), stddev_(0.0) { }
+
+  AdditiveGNoiseComponent(const AdditiveGNoiseComponent &other);
+
+  virtual int32 Properties() const {
+    return kBackpropInPlace|kSimpleComponent|kBackpropNeedsInput|
+        kBackpropNeedsOutput|kRandomComponent;
+  }
+  virtual std::string Type() const { return "AdditiveGNoiseComponent"; }
+
+  virtual void InitFromConfig(ConfigLine *cfl);
+
+  virtual int32 InputDim() const { return dim_; }
+
+  virtual int32 OutputDim() const { return dim_; }
+
+  virtual void Read(std::istream &is, bool binary);
+
+  // Write component to stream
+  virtual void Write(std::ostream &os, bool binary) const;
+
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                         const CuMatrixBase<BaseFloat> &in,
+                         CuMatrixBase<BaseFloat> *out) const;
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &out_value,
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+
+  virtual Component* Copy() const;
+
+  virtual std::string Info() const;
+
+  void SetStddev(BaseFloat stddev) {
+    stddev_ = stddev;
+  }
+
+  BaseFloat Stddev() const { return stddev_; }
+ private:
+  int32 dim_;
+  // Standard deviation of the Gaussian noise
+  BaseFloat stddev_;
+};
+
+// This component adds random Laplace noise to a layer
+// with fixed scale
+class AdditiveLNoiseComponent : public RandomComponent {
+ public:
+  void Init(int32 dim, BaseFloat sens = 0.0, BaseFloat eps = 1000000.0);
+
+  AdditiveLNoiseComponent(int32 dim, BaseFloat sens = 0.0,
+		  BaseFloat eps = 1000000.0) {
+    Init(dim, sens, eps);
+  }
+
+  AdditiveLNoiseComponent(): dim_(0), sens_(0.0), eps_(1000000.0) { }
+
+  AdditiveLNoiseComponent(const AdditiveLNoiseComponent &other);
+
+  virtual int32 Properties() const {
+    return kBackpropInPlace|kSimpleComponent|kBackpropNeedsInput|
+        kBackpropNeedsOutput|kRandomComponent;
+  }
+  virtual std::string Type() const { return "AdditiveLNoiseComponent"; }
+
+  virtual void InitFromConfig(ConfigLine *cfl);
+
+  virtual int32 InputDim() const { return dim_; }
+
+  virtual int32 OutputDim() const { return dim_; }
+
+  virtual void Read(std::istream &is, bool binary);
+
+  // Write component to stream
+  virtual void Write(std::ostream &os, bool binary) const;
+
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                         const CuMatrixBase<BaseFloat> &in,
+                         CuMatrixBase<BaseFloat> *out) const;
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &out_value,
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+
+  virtual Component* Copy() const;
+
+  virtual std::string Info() const;
+
+  void SetSens(BaseFloat sens) {
+    sens_ = sens;
+  }
+  void SetEps(BaseFloat eps) {
+    eps_ = eps;
+  }
+
+  BaseFloat Sens() const { return sens_; }
+  BaseFloat Eps() const { return eps_; }
+ private:
+  int32 dim_;
+  // Sensitivity of the Laplacian noise
+  BaseFloat sens_;
+  // Epsilon of the Laplacian noise
+  BaseFloat eps_;
+};
+
+// This component divides the output of this layer by
+// its L1 norm, such that it comes within [-1, 1] range
+class L1NormComponent : public Component {
+ public:
+  void Init(int32 dim);
+
+  L1NormComponent(int32 dim) {
+    Init(dim);
+  }
+
+  L1NormComponent(): dim_(0) { }
+
+  L1NormComponent(const L1NormComponent &other);
+
+  virtual int32 Properties() const {
+    return kBackpropInPlace|kSimpleComponent|kBackpropNeedsInput|
+        kBackpropNeedsOutput;
+  }
+  virtual std::string Type() const { return "L1NormComponent"; }
+
+  virtual void InitFromConfig(ConfigLine *cfl);
+
+  virtual int32 InputDim() const { return dim_; }
+
+  virtual int32 OutputDim() const { return dim_; }
+
+  virtual void Read(std::istream &is, bool binary);
+
+  // Write component to stream
+  virtual void Write(std::ostream &os, bool binary) const;
+
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                         const CuMatrixBase<BaseFloat> &in,
+                         CuMatrixBase<BaseFloat> *out) const;
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &out_value,
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+
+  virtual Component* Copy() const;
+
+  virtual std::string Info() const;
+
+ private:
+  int32 dim_;
+};
+/* L1NormComponent -- END */
+
+
 class ElementwiseProductComponent: public Component {
  public:
   void Init(int32 input_dim, int32 output_dim);

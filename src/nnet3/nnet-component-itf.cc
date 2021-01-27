@@ -189,6 +189,12 @@ Component* Component::NewComponentOfType(const std::string &component_type) {
     ans = new OutputGruNonlinearityComponent();
   } else if (component_type == "ScaleAndOffsetComponent") {
     ans = new ScaleAndOffsetComponent();
+  } else if (component_type == "AdditiveGNoiseComponent") {
+    ans = new AdditiveGNoiseComponent();
+  } else if (component_type == "AdditiveLNoiseComponent") {
+    ans = new AdditiveLNoiseComponent();
+  } else if (component_type == "L1NormComponent") {
+    ans = new L1NormComponent();
   }
   if (ans != NULL) {
     KALDI_ASSERT(component_type == ans->Type());

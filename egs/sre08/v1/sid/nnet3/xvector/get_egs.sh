@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Copyright      2017 Johns Hopkins University (Author: Daniel Povey)
 #                2017 Johns Hopkins University (Author: Daniel Garcia-Romero)
@@ -215,6 +215,8 @@ if [ $stage -le 3 ]; then
     exit 1
   fi
 fi
+
+#exit 1
 
 if [ $stage -le 4 ]; then
   echo "$0: Shuffling order of archives on disk"
