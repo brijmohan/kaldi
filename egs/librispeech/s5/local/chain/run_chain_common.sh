@@ -48,7 +48,7 @@ if [ $stage -le 11 ]; then
       exit 1;
     fi
   else
-    cp -r data/lang $lang
+    cp -r data/lang_nosp $lang
     silphonelist=$(cat $lang/phones/silence.csl) || exit 1;
     nonsilphonelist=$(cat $lang/phones/nonsilence.csl) || exit 1;
     # Use our special topology... note that later on may have to tune this
@@ -79,4 +79,3 @@ if [ $stage -le 13 ]; then
       --cmd "$train_cmd" $num_leaves ${lores_train_data_dir} $lang $ali_dir $tree_dir
 fi
 
-exit 0;

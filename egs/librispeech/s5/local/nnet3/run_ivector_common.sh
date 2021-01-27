@@ -52,7 +52,7 @@ if [ $stage -le 2 ]; then
   fi
   echo "$0: aligning with the perturbed low-resolution data"
   steps/align_fmllr.sh --nj 100 --cmd "$train_cmd" \
-    data/${train_set}_sp data/lang $gmm_dir $ali_dir || exit 1
+    data/${train_set}_sp data/lang_nosp $gmm_dir $ali_dir || exit 1
 fi
 
 if [ $stage -le 3 ]; then
@@ -67,7 +67,8 @@ if [ $stage -le 3 ]; then
     utils/create_split_dir.pl /export/b0{1,2,3,4}/$USER/kaldi-data/mfcc/librispeech-$(date +'%m_%d_%H_%M')/s5/$mfccdir/storage $mfccdir/storage
   fi
 
-  for datadir in ${train_set}_sp test_clean test_other dev_clean dev_other; do
+  #for datadir in ${train_set}_sp test_clean test_other dev_clean dev_other; do
+  for datadir in ${train_set}_sp test_clean dev_clean; do
     utils/copy_data_dir.sh data/$datadir data/${datadir}_hires
   done
 
@@ -75,7 +76,8 @@ if [ $stage -le 3 ]; then
   # features; this helps make trained nnets more invariant to test data volume.
   utils/data/perturb_data_dir_volume.sh data/${train_set}_sp_hires
 
-  for datadir in ${train_set}_sp test_clean test_other dev_clean dev_other; do
+  #for datadir in ${train_set}_sp test_clean test_other dev_clean dev_other; do
+  for datadir in ${train_set}_sp test_clean dev_clean; do
     steps/make_mfcc.sh --nj 70 --mfcc-config conf/mfcc_hires.conf \
       --cmd "$train_cmd" data/${datadir}_hires || exit 1;
     steps/compute_cmvn_stats.sh data/${datadir}_hires || exit 1;
@@ -148,11 +150,11 @@ fi
 
 if [ $stage -le 7 ]; then
   echo "$0: extracting iVectors for dev and test data"
-  for data in test_clean test_other dev_clean dev_other; do
+  #for data in test_clean test_other dev_clean dev_other; do
+  for data in test_clean dev_clean; do
     steps/online/nnet2/extract_ivectors_online.sh --cmd "$train_cmd" --nj 20 \
       data/${data}_hires exp/nnet3${nnet3_affix}/extractor \
       exp/nnet3${nnet3_affix}/ivectors_${data}_hires || exit 1;
   done
 fi
 
-exit 0;

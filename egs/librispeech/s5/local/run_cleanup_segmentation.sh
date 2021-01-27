@@ -30,6 +30,8 @@ nj=100
 decode_nj=16
 decode_num_threads=4
 
+lang_dir=data/lang
+
 . ./path.sh
 . ./cmd.sh
 . ./utils/parse_options.sh
@@ -41,40 +43,44 @@ cleaned_dir=${srcdir}_${cleanup_affix}
 
 if [ $stage -le 1 ]; then
   # This does the actual data cleanup.
+  echo "stage 1"
   steps/cleanup/clean_and_segment_data.sh --stage $cleanup_stage --nj $nj --cmd "$train_cmd" \
-    $data data/lang $srcdir $dir $cleaned_data
+    $data ${lang_dir} $srcdir $dir $cleaned_data
 fi
 
 if [ $stage -le 2 ]; then
+  echo "stage 2"
   steps/align_fmllr.sh --nj $nj --cmd "$train_cmd" \
-    $cleaned_data data/lang $srcdir ${srcdir}_ali_${cleanup_affix}
+    $cleaned_data ${lang_dir} $srcdir ${srcdir}_ali_${cleanup_affix}
 fi
 
 if [ $stage -le 3 ]; then
+  echo "stage 3"
   steps/train_sat.sh --cmd "$train_cmd" \
-    7000 150000 $cleaned_data data/lang ${srcdir}_ali_${cleanup_affix} ${cleaned_dir}
+    7000 150000 $cleaned_data ${lang_dir} ${srcdir}_ali_${cleanup_affix} ${cleaned_dir}
 fi
 
 if [ $stage -le 4 ]; then
+  echo "stage 4"
   # Test with the models trained on cleaned-up data.
-  utils/mkgraph.sh data/lang_test_tgsmall ${cleaned_dir} ${cleaned_dir}/graph_tgsmall
+  utils/mkgraph.sh ${lang_dir}_test_tgsmall ${cleaned_dir} ${cleaned_dir}/graph_tgsmall
 
-  for dset in test_clean test_other dev_clean dev_other; do
+  #for dset in test_clean test_other dev_clean dev_other; do
+  for dset in test_clean; do
     (
     steps/decode_fmllr.sh --nj $decode_nj --num-threads $decode_num_threads \
        --cmd "$decode_cmd" \
        ${cleaned_dir}/graph_tgsmall data/${dset} ${cleaned_dir}/decode_${dset}_tgsmall
-    steps/lmrescore.sh --cmd "$decode_cmd" data/lang_test_{tgsmall,tgmed} \
+    steps/lmrescore.sh --cmd "$decode_cmd" ${lang_dir}_test_{tgsmall,tgmed} \
       data/${dset} ${cleaned_dir}/decode_${dset}_{tgsmall,tgmed}
     steps/lmrescore_const_arpa.sh \
-      --cmd "$decode_cmd" data/lang_test_{tgsmall,tglarge} \
+      --cmd "$decode_cmd" ${lang_dir}_test_{tgsmall,tglarge} \
       data/${dset} ${cleaned_dir}/decode_${dset}_{tgsmall,tglarge}
-    steps/lmrescore_const_arpa.sh \
-      --cmd "$decode_cmd" data/lang_test_{tgsmall,fglarge} \
-      data/${dset} ${cleaned_dir}/decode_${dset}_{tgsmall,fglarge}
+    #steps/lmrescore_const_arpa.sh \
+    #  --cmd "$decode_cmd" ${lang_dir}_test_{tgsmall,fglarge} \
+    #  data/${dset} ${cleaned_dir}/decode_${dset}_{tgsmall,fglarge}
    ) &
   done
 fi
 
 wait;
-exit 0;

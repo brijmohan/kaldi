@@ -168,7 +168,7 @@ fi
 # nnet3 setup, and you can skip them by setting "--stage 11" if you have already
 # run those things.
 
-local/nnet3/run_ivector_common.sh --stage $stage \
+local_librispeech/nnet3/run_ivector_common.sh --stage $stage \
                                   --train-set $train_set \
                                   --gmm $gmm \
                                   --num-threads-ubm 6 --num-processes 3 \
@@ -194,7 +194,7 @@ done
 
 # Please take this as a reference on how to specify all the options of
 # local/chain/run_chain_common.sh
-local/chain/run_chain_common.sh --stage $stage \
+local_librispeech/chain/run_chain_common.sh --stage $stage \
                                 --gmm-dir $gmm_dir \
                                 --ali-dir $ali_dir \
                                 --lores-train-data-dir ${lores_train_data_dir} \
@@ -287,7 +287,8 @@ if [ $stage -le 15 ]; then
     --feat-dir $train_data_dir \
     --tree-dir $tree_dir \
     --lat-dir $lat_dir \
-    --dir $dir  || exit 1;
+    --dir $dir \
+    --use-gpu=wait  || exit 1;
 
 fi
 
@@ -296,7 +297,7 @@ if [ $stage -le 16 ]; then
   # Note: it might appear that this $lang directory is mismatched, and it is as
   # far as the 'topo' is concerned, but this script doesn't read the 'topo' from
   # the lang directory.
-  utils/mkgraph.sh --self-loop-scale 1.0 --remove-oov data/lang_test_tgsmall $dir $graph_dir
+  utils/mkgraph.sh --self-loop-scale 1.0 --remove-oov data/lang_nosp_test_tgsmall $dir $graph_dir
 fi
 
 iter_opts=
@@ -305,20 +306,22 @@ if [ ! -z $decode_iter ]; then
 fi
 if [ $stage -le 17 ]; then
   rm $dir/.error 2>/dev/null || true
-  for decode_set in test_clean test_other dev_clean dev_other; do
+  #for decode_set in test_clean test_other dev_clean dev_other; do
+  #for decode_set in test_clean test_other; do
+  for decode_set in test_clean; do
       (
       steps/nnet3/decode.sh --acwt 1.0 --post-decode-acwt 10.0 \
           --nj $decode_nj --cmd "$decode_cmd" $iter_opts \
           --online-ivector-dir exp/nnet3${nnet3_affix}/ivectors_${decode_set}_hires \
           $graph_dir data/${decode_set}_hires $dir/decode_${decode_set}${decode_iter:+_$decode_iter}_tgsmall || exit 1
-      steps/lmrescore.sh --cmd "$decode_cmd" --self-loop-scale 1.0 data/lang_test_{tgsmall,tgmed} \
+      steps/lmrescore.sh --cmd "$decode_cmd" --self-loop-scale 1.0 data/lang_nosp_test_{tgsmall,tgmed} \
           data/${decode_set}_hires $dir/decode_${decode_set}${decode_iter:+_$decode_iter}_{tgsmall,tgmed} || exit 1
       steps/lmrescore_const_arpa.sh \
-          --cmd "$decode_cmd" data/lang_test_{tgsmall,tglarge} \
+          --cmd "$decode_cmd" data/lang_nosp_test_{tgsmall,tglarge} \
           data/${decode_set}_hires $dir/decode_${decode_set}${decode_iter:+_$decode_iter}_{tgsmall,tglarge} || exit 1
-      steps/lmrescore_const_arpa.sh \
-          --cmd "$decode_cmd" data/lang_test_{tgsmall,fglarge} \
-          data/${decode_set}_hires $dir/decode_${decode_set}${decode_iter:+_$decode_iter}_{tgsmall,fglarge} || exit 1
+      #steps/lmrescore_const_arpa.sh \
+      #    --cmd "$decode_cmd" data/lang_nosp_test_{tgsmall,fglarge} \
+      #    data/${decode_set}_hires $dir/decode_${decode_set}${decode_iter:+_$decode_iter}_{tgsmall,fglarge} || exit 1
       ) || touch $dir/.error &
   done
   wait
@@ -336,7 +339,8 @@ if $test_online_decoding && [ $stage -le 18 ]; then
        $lang exp/nnet3${nnet3_affix}/extractor $dir ${dir}_online
 
   rm $dir/.error 2>/dev/null || true
-  for data in test_clean test_other dev_clean dev_other; do
+  #for data in test_clean test_other dev_clean dev_other; do
+  for data in test_clean; do
     (
       nspk=$(wc -l <data/${data}_hires/spk2utt)
       # note: we just give it "data/${data}" as it only uses the wav.scp, the
