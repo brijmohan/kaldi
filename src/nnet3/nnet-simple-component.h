@@ -212,13 +212,14 @@ class AdditiveGNoiseComponent : public RandomComponent {
 // with fixed scale
 class AdditiveLNoiseComponent : public RandomComponent {
  public:
-  void Init(int32 dim, BaseFloat scale = 0.0);
+  void Init(int32 dim, BaseFloat sens = 0.0, BaseFloat eps = 1000000.0);
 
-  AdditiveLNoiseComponent(int32 dim, BaseFloat scale = 0.0) {
-    Init(dim, scale);
+  AdditiveLNoiseComponent(int32 dim, BaseFloat sens = 0.0,
+		  BaseFloat eps = 1000000.0) {
+    Init(dim, sens, eps);
   }
 
-  AdditiveLNoiseComponent(): dim_(0), scale_(0.0) { }
+  AdditiveLNoiseComponent(): dim_(0), sens_(0.0), eps_(1000000.0) { }
 
   AdditiveLNoiseComponent(const AdditiveLNoiseComponent &other);
 
@@ -255,16 +256,74 @@ class AdditiveLNoiseComponent : public RandomComponent {
 
   virtual std::string Info() const;
 
-  void SetScale(BaseFloat scale) {
-    scale_ = scale;
+  void SetSens(BaseFloat sens) {
+    sens_ = sens;
+  }
+  void SetEps(BaseFloat eps) {
+    eps_ = eps;
   }
 
-  BaseFloat Scale() const { return scale_; }
+  BaseFloat Sens() const { return sens_; }
+  BaseFloat Eps() const { return eps_; }
  private:
   int32 dim_;
-  // Scale of the Laplacian noise
-  BaseFloat scale_;
+  // Sensitivity of the Laplacian noise
+  BaseFloat sens_;
+  // Epsilon of the Laplacian noise
+  BaseFloat eps_;
 };
+
+// This component divides the output of this layer by
+// its L1 norm, such that it comes within [-1, 1] range
+class L1NormComponent : public Component {
+ public:
+  void Init(int32 dim);
+
+  L1NormComponent(int32 dim) {
+    Init(dim);
+  }
+
+  L1NormComponent(): dim_(0) { }
+
+  L1NormComponent(const L1NormComponent &other);
+
+  virtual int32 Properties() const {
+    return kBackpropInPlace|kSimpleComponent|kBackpropNeedsInput|
+        kBackpropNeedsOutput;
+  }
+  virtual std::string Type() const { return "L1NormComponent"; }
+
+  virtual void InitFromConfig(ConfigLine *cfl);
+
+  virtual int32 InputDim() const { return dim_; }
+
+  virtual int32 OutputDim() const { return dim_; }
+
+  virtual void Read(std::istream &is, bool binary);
+
+  // Write component to stream
+  virtual void Write(std::ostream &os, bool binary) const;
+
+  virtual void* Propagate(const ComponentPrecomputedIndexes *indexes,
+                         const CuMatrixBase<BaseFloat> &in,
+                         CuMatrixBase<BaseFloat> *out) const;
+  virtual void Backprop(const std::string &debug_info,
+                        const ComponentPrecomputedIndexes *indexes,
+                        const CuMatrixBase<BaseFloat> &in_value,
+                        const CuMatrixBase<BaseFloat> &out_value,
+                        const CuMatrixBase<BaseFloat> &out_deriv,
+                        void *memo,
+                        Component *to_update,
+                        CuMatrixBase<BaseFloat> *in_deriv) const;
+
+  virtual Component* Copy() const;
+
+  virtual std::string Info() const;
+
+ private:
+  int32 dim_;
+};
+/* L1NormComponent -- END */
 
 
 class ElementwiseProductComponent: public Component {

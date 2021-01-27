@@ -32,6 +32,7 @@ config_to_layer = {
         'tanh-layer' : xlayers.XconfigBasicLayer,
         'gnoise-layer' : xlayers.XconfigBasicLayer,
         'lnoise-layer' : xlayers.XconfigBasicLayer,
+        'l1norm-layer' : xlayers.XconfigBasicLayer,
         'fixed-affine-layer' : xlayers.XconfigFixedAffineLayer,
         'idct-layer' : xlayers.XconfigIdctLayer,
         'affine-layer' : xlayers.XconfigAffineLayer,

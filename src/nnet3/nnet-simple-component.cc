@@ -347,41 +347,48 @@ void AdditiveGNoiseComponent::Write(std::ostream &os, bool binary) const {
 }
 
 // Additive Laplacian Noise Component
+/* AdditiveLNoiseComponent -- BEGIN */
 AdditiveLNoiseComponent::AdditiveLNoiseComponent(const AdditiveLNoiseComponent &other):
     RandomComponent(other),
     dim_(other.dim_),
-    scale_(other.scale_) { }
+    sens_(other.sens_),
+    eps_(other.eps_) { }
 
 Component* AdditiveLNoiseComponent::Copy() const {
   AdditiveLNoiseComponent *ans = new AdditiveLNoiseComponent(*this);
   return ans;
 }
 
-void AdditiveLNoiseComponent::Init(int32 dim, BaseFloat scale) {
-  scale_ = scale;
+void AdditiveLNoiseComponent::Init(int32 dim, BaseFloat sens,
+		BaseFloat eps) {
+  sens_ = sens;
+  eps_ = eps;
   dim_ = dim;
 }
 
 void AdditiveLNoiseComponent::InitFromConfig(ConfigLine *cfl) {
   int32 dim = 0;
-  BaseFloat scale = 0.0;
+  BaseFloat sens = 0.0;
+  BaseFloat eps = 1000000.0;
   test_mode_ = false;
   bool ok = cfl->GetValue("dim", &dim) &&
-    cfl->GetValue("scale", &scale);
+    cfl->GetValue("sens", &sens) &&
+    cfl->GetValue("eps", &eps);
   // It only makes sense to set test-mode in the config for testing purposes.
   cfl->GetValue("test-mode", &test_mode_);
     // for this stage, dropout is hard coded in
     // normal mode if not declared in config
-  if (!ok || cfl->HasUnusedValues() || dim <= 0 || scale < 0.0)
+  if (!ok || cfl->HasUnusedValues() || dim <= 0 || sens < 0.0 || eps <= 0)
        KALDI_ERR << "Invalid initializer for layer of type "
                  << Type() << ": \"" << cfl->WholeLine() << "\"";
-  Init(dim, scale);
+  Init(dim, sens, eps);
 }
 
 std::string AdditiveLNoiseComponent::Info() const {
   std::ostringstream stream;
   stream << Type() << ", dim=" << dim_
-         << ", scale=" << scale_;
+         << ", sens=" << sens_
+         << ", eps=" << eps_;
   return stream.str();
 }
 
@@ -391,7 +398,7 @@ void* AdditiveLNoiseComponent::Propagate(const ComponentPrecomputedIndexes *inde
   KALDI_ASSERT(out->NumRows() == in.NumRows() && out->NumCols() == in.NumCols()
                && in.NumCols() == dim_);
 
-  BaseFloat scale = scale_;
+  BaseFloat scale = sens_ * in.NumRows() / eps_;
   KALDI_ASSERT(scale >= 0.0);
   /*
   if (test_mode_) {
@@ -400,6 +407,7 @@ void* AdditiveLNoiseComponent::Propagate(const ComponentPrecomputedIndexes *inde
   }
   */
   out->CopyFromMat(in);
+  /* Generate Laplace noise from Uniform noise */
   CuMatrix<BaseFloat> rand1(in.NumRows(), in.NumCols());
   CuMatrix<BaseFloat> rand2(in.NumRows(), in.NumCols());
   // How to get Laplace distribution using uniform distribution
@@ -410,7 +418,8 @@ void* AdditiveLNoiseComponent::Propagate(const ComponentPrecomputedIndexes *inde
   rand1.ApplyLog();
   rand2.ApplyLog();
   rand2.AddMat(-1.0, rand1);
-  out->AddMat(scale_, rand2);
+  /* rand2 is a sample from Laplace distribution */
+  out->AddMat(scale, rand2);
   return NULL;
 }
 
@@ -442,9 +451,15 @@ void AdditiveLNoiseComponent::Read(std::istream &is, bool binary) {
   }
   KALDI_ASSERT(token == "<Dim>");
   ReadBasicType(is, binary, &dim_);  // read dimension.
+  
   ReadToken(is, binary, &token);
-  KALDI_ASSERT(token == "<Scale>");
-  ReadBasicType(is, binary, &scale_);  // read standard deviation
+  KALDI_ASSERT(token == "<Sens>");
+  ReadBasicType(is, binary, &sens_);  // read sensitivity
+
+  ReadToken(is, binary, &token);
+  KALDI_ASSERT(token == "<Eps>");
+  ReadBasicType(is, binary, &eps_);  // read epsilon
+  
   ReadToken(is, binary, &token);
   if (token == "<TestMode>") {
     ReadBasicType(is, binary, &test_mode_);  // read test mode
@@ -459,12 +474,124 @@ void AdditiveLNoiseComponent::Write(std::ostream &os, bool binary) const {
   WriteToken(os, binary, "<AdditiveLNoiseComponent>");
   WriteToken(os, binary, "<Dim>");
   WriteBasicType(os, binary, dim_);
-  WriteToken(os, binary, "<Scale>");
-  WriteBasicType(os, binary, scale_);
+  WriteToken(os, binary, "<Sens>");
+  WriteBasicType(os, binary, sens_);
+  WriteToken(os, binary, "<Eps>");
+  WriteBasicType(os, binary, eps_);
   WriteToken(os, binary, "<TestMode>");
   WriteBasicType(os, binary, test_mode_);
   WriteToken(os, binary, "</AdditiveLNoiseComponent>");
 }
+/* AdditiveLNoiseComponent -- END */
+
+
+// L1 Norm Component - divides the output by its L1 Norm
+/* L1NormComponent -- BEGIN */
+L1NormComponent::L1NormComponent(const L1NormComponent &other):
+    dim_(other.dim_) { }
+
+Component* L1NormComponent::Copy() const {
+  L1NormComponent *ans = new L1NormComponent(*this);
+  return ans;
+}
+
+void L1NormComponent::Init(int32 dim) {
+  dim_ = dim;
+}
+
+void L1NormComponent::InitFromConfig(ConfigLine *cfl) {
+  int32 dim = 0;
+  bool ok = cfl->GetValue("dim", &dim);
+  // for this stage, dropout is hard coded in
+  // normal mode if not declared in config
+  if (!ok || cfl->HasUnusedValues() || dim <= 0)
+       KALDI_ERR << "Invalid initializer for layer of type "
+                 << Type() << ": \"" << cfl->WholeLine() << "\"";
+  Init(dim);
+}
+
+std::string L1NormComponent::Info() const {
+  std::ostringstream stream;
+  stream << Type() << ", dim=" << dim_;
+  return stream.str();
+}
+
+void* L1NormComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
+                                 const CuMatrixBase<BaseFloat> &in,
+                                 CuMatrixBase<BaseFloat> *out) const {
+  KALDI_ASSERT(out->NumRows() == in.NumRows() && out->NumCols() == in.NumCols()
+               && in.NumCols() == dim_);
+
+  // Take absolute of the input matrix
+  CuMatrix<BaseFloat> in_abs(in);
+  // Ref: https://github.com/kaldi-asr/kaldi/blob/bcd163c5ae45a9dcc488c86e98281649b8156529/src/nnet3/nnet-simple-component.cc#L787
+  in_abs.ApplyPowAbs(1.0);
+
+  // Compute l1-norm
+  CuVector<BaseFloat> l1norm(in.NumRows());
+  l1norm.SetZero();
+  // Ref: https://github.com/kaldi-asr/kaldi/blob/bcd163c5ae45a9dcc488c86e98281649b8156529/src/cudamatrix/cu-matrix-test.cc#L1959
+  l1norm.AddColSumMat(1.0, in_abs);
+
+  // Divide input from its l1-norm
+  out->CopyFromMat(in);
+  // Ref: https://github.com/kaldi-asr/kaldi/blob/85b2513fe0780469eff680f98d42fc7158dda7e0/src/nnet3/nnet-general-component.cc#L799
+  out->DivRowsVec(l1norm);
+
+  // Sanity check
+  // Check if the l1 norm of the out matrix sums to the numRows
+  /*
+  in_abs.CopyFromMat(*out);
+  in_abs.ApplyPowAbs(1.0);
+  BaseFloat matsum = in_abs.Sum();
+  //KALDI_ASSERT(matsum == out->NumRows());
+  if (matsum != (BaseFloat) out->NumRows())
+    KALDI_ERR << "L1 norm of the output: expected " << out->NumRows() << ", got " << matsum;
+  */
+
+  return NULL;
+}
+
+
+void L1NormComponent::Backprop(const std::string &debug_info,
+                                const ComponentPrecomputedIndexes *indexes,
+                                const CuMatrixBase<BaseFloat> &in_value,
+                                const CuMatrixBase<BaseFloat> &out_value,
+                                const CuMatrixBase<BaseFloat> &out_deriv,
+                                void *memo,
+                                Component *to_update,
+                                CuMatrixBase<BaseFloat> *in_deriv) const {
+  NVTX_RANGE("L1NormComponent::Backprop");
+  KALDI_ASSERT(in_value.NumRows() == out_value.NumRows() &&
+               in_value.NumCols() == out_value.NumCols());
+
+  KALDI_ASSERT(in_value.NumRows() == out_deriv.NumRows() &&
+               in_value.NumCols() == out_deriv.NumCols());
+  in_deriv->SetMatMatDivMat(out_deriv, out_value, in_value);
+}
+
+
+
+void L1NormComponent::Read(std::istream &is, bool binary) {
+  std::string token;
+  ReadToken(is, binary, &token);
+  if (token == "<L1NormComponent>") {
+    ReadToken(is, binary, &token);
+  }
+  KALDI_ASSERT(token == "<Dim>");
+  ReadBasicType(is, binary, &dim_);  // read dimension.
+  
+  ReadToken(is, binary, &token);
+  KALDI_ASSERT(token == "</L1NormComponent>");
+}
+
+void L1NormComponent::Write(std::ostream &os, bool binary) const {
+  WriteToken(os, binary, "<L1NormComponent>");
+  WriteToken(os, binary, "<Dim>");
+  WriteBasicType(os, binary, dim_);
+  WriteToken(os, binary, "</L1NormComponent>");
+}
+/* L1NormComponent -- END */
 
 
 void ElementwiseProductComponent::Init(int32 input_dim, int32 output_dim)  {
