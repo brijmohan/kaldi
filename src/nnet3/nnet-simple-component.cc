@@ -488,31 +488,33 @@ void AdditiveLNoiseComponent::Write(std::ostream &os, bool binary) const {
 // L1 Norm Component - divides the output by its L1 Norm
 /* L1NormComponent -- BEGIN */
 L1NormComponent::L1NormComponent(const L1NormComponent &other):
-    dim_(other.dim_) { }
+    dim_(other.dim_), threshold_(other.threshold_) { }
 
 Component* L1NormComponent::Copy() const {
   L1NormComponent *ans = new L1NormComponent(*this);
   return ans;
 }
 
-void L1NormComponent::Init(int32 dim) {
+void L1NormComponent::Init(int32 dim, BaseFloat threshold) {
   dim_ = dim;
+  threshold_ = threshold;
 }
 
 void L1NormComponent::InitFromConfig(ConfigLine *cfl) {
   int32 dim = 0;
-  bool ok = cfl->GetValue("dim", &dim);
-  // for this stage, dropout is hard coded in
-  // normal mode if not declared in config
-  if (!ok || cfl->HasUnusedValues() || dim <= 0)
+  BaseFloat threshold = 1.0;
+  bool ok = cfl->GetValue("dim", &dim) 
+	  && cfl->GetValue("threshold", &threshold);
+  if (!ok || cfl->HasUnusedValues() || dim <= 0 || threshold < 0)
        KALDI_ERR << "Invalid initializer for layer of type "
                  << Type() << ": \"" << cfl->WholeLine() << "\"";
-  Init(dim);
+  Init(dim, threshold);
 }
 
 std::string L1NormComponent::Info() const {
   std::ostringstream stream;
-  stream << Type() << ", dim=" << dim_;
+  stream << Type() << ", dim=" << dim_
+	 << ", threshold=" << threshold_;
   return stream.str();
 }
 
@@ -532,6 +534,14 @@ void* L1NormComponent::Propagate(const ComponentPrecomputedIndexes *indexes,
   l1norm.SetZero();
   // Ref: https://github.com/kaldi-asr/kaldi/blob/bcd163c5ae45a9dcc488c86e98281649b8156529/src/cudamatrix/cu-matrix-test.cc#L1959
   l1norm.AddColSumMat(1.0, in_abs);
+  // Keep only values which are >1, make rest as 1.0
+  // IT IS TOO SLOW BECAUSE OF SERIAL CPU OPERATION
+  /*
+  for (int32 idx = 0; idx < in.NumRows(); idx++) {
+    if (l1norm(idx) < threshold_) {
+      l1norm(idx) = 1.0;
+    }
+  }*/
 
   // Divide input from its l1-norm
   out->CopyFromMat(in);
@@ -568,9 +578,33 @@ void L1NormComponent::Backprop(const std::string &debug_info,
   KALDI_ASSERT(in_value.NumRows() == out_deriv.NumRows() &&
                in_value.NumCols() == out_deriv.NumCols());
   in_deriv->SetMatMatDivMat(out_deriv, out_value, in_value);
+
+  // The gradient for which l1norm >= threshold must be scaled by (1 - |out|)
+  CuMatrix<BaseFloat> grad_multiplier(out_deriv.NumRows(), out_deriv.NumCols());
+  grad_multiplier.Set(1.0);
+  CuMatrix<BaseFloat> out_abs(out_value);
+  out_abs.ApplyPowAbs(1.0);
+
+  // Again compute the l1-norm of the input to 
+  // select only rows which were changed
+  // TOO SLOW
+  /*
+  CuMatrix<BaseFloat> in_abs(in_value);
+  in_abs.ApplyPowAbs(1.0);
+  CuVector<BaseFloat> l1norm(in_value.NumRows());
+  l1norm.SetZero();
+  l1norm.AddColSumMat(1.0, in_abs);
+  for (int32 ridx = 0; ridx < in_value.NumRows(); ridx++) {
+    if (l1norm(ridx) >= threshold_) {
+      for (int32 cidx = 0; cidx < in_value.NumCols(); cidx++) {
+        grad_multiplier(ridx, cidx) = 1.0 - out_abs(ridx, cidx);
+      }
+    }
+  }
+  */
+  grad_multiplier.AddMat(-1.0, out_abs);
+  in_deriv->MulElements(grad_multiplier);
 }
-
-
 
 void L1NormComponent::Read(std::istream &is, bool binary) {
   std::string token;
