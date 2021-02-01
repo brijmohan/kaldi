@@ -277,13 +277,13 @@ class AdditiveLNoiseComponent : public RandomComponent {
 // its L1 norm, such that it comes within [-1, 1] range
 class L1NormComponent : public Component {
  public:
-  void Init(int32 dim);
+  void Init(int32 dim, BaseFloat threshold = 1.0);
 
-  L1NormComponent(int32 dim) {
-    Init(dim);
+  L1NormComponent(int32 dim, BaseFloat threshold = 1.0) {
+    Init(dim, threshold);
   }
 
-  L1NormComponent(): dim_(0) { }
+  L1NormComponent(): dim_(0), threshold_(1.0) { }
 
   L1NormComponent(const L1NormComponent &other);
 
@@ -320,8 +320,15 @@ class L1NormComponent : public Component {
 
   virtual std::string Info() const;
 
+  void SetThreshold(BaseFloat threshold) {
+    threshold_ = threshold;
+  }
+
+  BaseFloat Threshold() const { return threshold_; }
+
  private:
   int32 dim_;
+  BaseFloat threshold_;
 };
 /* L1NormComponent -- END */
 
