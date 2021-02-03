@@ -309,7 +309,8 @@ void AdditiveGNoiseComponent::Backprop(const std::string &debug_info,
 
   KALDI_ASSERT(in_value.NumRows() == out_deriv.NumRows() &&
                in_value.NumCols() == out_deriv.NumCols());
-  in_deriv->SetMatMatDivMat(out_deriv, out_value, in_value);
+  //in_deriv->SetMatMatDivMat(out_deriv, out_value, in_value);
+  in_deriv->CopyFromMat(out_deriv);
 }
 
 
@@ -398,7 +399,10 @@ void* AdditiveLNoiseComponent::Propagate(const ComponentPrecomputedIndexes *inde
   KALDI_ASSERT(out->NumRows() == in.NumRows() && out->NumCols() == in.NumCols()
                && in.NumCols() == dim_);
 
-  BaseFloat scale = sens_ * in.NumRows() / eps_;
+  //BaseFloat scale = sens_ * in.NumRows() / eps_;
+  // Maybe do not use L in the formulation
+  // because the magnitude of noise increases quite a lot
+  BaseFloat scale = sens_ / eps_;
   KALDI_ASSERT(scale >= 0.0);
   /*
   if (test_mode_) {
@@ -438,7 +442,9 @@ void AdditiveLNoiseComponent::Backprop(const std::string &debug_info,
 
   KALDI_ASSERT(in_value.NumRows() == out_deriv.NumRows() &&
                in_value.NumCols() == out_deriv.NumCols());
-  in_deriv->SetMatMatDivMat(out_deriv, out_value, in_value);
+  //in_deriv->SetMatMatDivMat(out_deriv, out_value, in_value);
+  // Just use the incoming gradients
+  in_deriv->CopyFromMat(out_deriv);
 }
 
 
