@@ -258,11 +258,17 @@ def main():
                 break
             spkr = spkrs.pop()
             utt_len = 0
-            while utt_len < length:
-                utt = get_random_utt(spkr, spk2utt)
+            nutt_spkr = len(spk2utt[spkr])
+            break_loop = 0
+            # https://github.com/kaldi-asr/kaldi/issues/4319
+            # https://github.com/kaldi-asr/kaldi/pull/4320/files
+            while utt_len < length and break_loop < nutt_spkr:
+                utt = get_random_utt(spkr, spk2utt, length)
                 utt_len = utt2len[utt]
-            offset = get_random_offset(utt_len, length)
-            this_egs.append( (utt, offset) )
+                break_loop += 1
+            if break_loop < nutt_spkr:
+                offset = get_random_offset(utt_len, length)
+                this_egs.append( (utt, offset) )
         all_egs.append(this_egs)
     info_f.close()
 
